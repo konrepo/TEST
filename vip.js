@@ -51,16 +51,33 @@ async function fetchFromBlog(blogId, postId) {
     const { data } = await axiosClient.get(feedUrl);
 
     const title = data.entry.title.$t;
-    const thumbnail = data.entry.media$thumbnail?.url || "";
     const year =
       parseInt(data.entry.published.$t.slice(0, 4)) ||
       new Date().getFullYear();
 
-    const urls = extractVideoLinks(data.entry.content.$t);
+    const content = data.entry.content?.$t || "";
 
+    // Extract largest blogger image from content
+    let thumbnail = "";
+    const imgMatch = content.match(
+      /https?:\/\/blogger\.googleusercontent\.com[^"']+/
+    );
+
+    if (imgMatch) {
+      thumbnail = imgMatch[0];
+    } else {
+      thumbnail = data.entry.media$thumbnail?.url || "";
+    }
+
+    const urls = extractVideoLinks(content);
     if (!urls.length) return null;
 
-    return { title, thumbnail, year, urls };
+    return {
+      title,
+      thumbnail: normalizePoster(thumbnail),
+      year,
+      urls,
+    };
   } catch {
     return null;
   }
