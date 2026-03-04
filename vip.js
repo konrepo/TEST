@@ -21,7 +21,7 @@ const manifest = {
     },
     {
       type: "series",
-      id: "iDrana",
+      id: "idrama",
       name: "iDrama Latest",
       extraSupported: ["search", "skip"],
     }    
