@@ -22,6 +22,13 @@ const axiosClient = axios.create({
 ========================= */
 
 function extractVideoLinks(text) {
+  // poster
+  function normalizePoster(url) {
+  if (!url) return "";
+  return url
+    .replace(/\/s\d+\//, "/s0/")
+    .replace(/=s\d+/, "=s0");
+}
   const regex =
     /https?:\/\/[^\s"';<> ]+\.(?:m3u8|mp4)(?:\?[^\s"';<> ]+)?/gi;
   const matches = text.match(regex);
@@ -103,7 +110,7 @@ async function getItems(url) {
         results.push({
           id: postId,
           name: title,
-          poster,
+          poster: normalizePoster(poster),
         });
       }
     } catch {
@@ -123,7 +130,8 @@ async function getEpisodes(postId) {
     title: detail.title,
     season: 1,
     episode: index + 1,
-    thumbnail: detail.thumbnail,
+    thumbnail: normalizePoster(detail.thumbnail),
+    released: new Date().toISOString()
   }));
 }
 
@@ -204,8 +212,8 @@ builder.defineMetaHandler(async ({ id }) => {
         id: id,
         type: "series",
         name: first.title,
-        poster: first.thumbnail,
-        background: first.thumbnail,
+        poster: normalizePoster(first.thumbnail),
+        background: normalizePoster(first.thumbnail),
         videos: episodes,
       },
     };
