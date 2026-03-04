@@ -4,6 +4,8 @@ const axios = require("axios");
 
 const BASE_URL = "https://phumikhmer.vip";
 
+const POST_INFO = new Map(); // postId -> { maxEp?: number }
+
 const BLOG_IDS = {
   TVSABAY: "8016412028548971199",
   ONELEGEND: "596013908374331296",
@@ -16,6 +18,13 @@ const axiosClient = axios.create({
   headers: { "User-Agent": USER_AGENT },
   timeout: 15000,
 });
+
+async function getMaxEpFromSeriesPage(postId) {
+  // Find the series URL from the catalog cache, if we have it
+  // If not available, we can't fetch (because we only have postId).
+  // So we return null and fall back to POST_INFO.
+  return POST_INFO.get(postId)?.maxEp || null;
+}
 
 /* =========================
    UTIL
@@ -112,6 +121,11 @@ async function getItems(url) {
     const img = $el.find("img").first();
 
     const title = a.text().trim();
+    const epMatch =
+      title.match(/\bEP\.?\s*(\d+)\b/i) ||
+      title.match(/\bEpisode\s*(\d+)\b/i) ||
+      title.match(/\[EP\.?\s*(\d+)\]/i);
+    const maxEp = epMatch ? parseInt(epMatch[1], 10) : null;
     const link = a.attr("href");
     if (!title || !link) continue;
 
@@ -123,6 +137,9 @@ async function getItems(url) {
     try {
       const postId = await getPostId(link);
       if (postId) {
+        if (maxEp) {
+          POST_INFO.set(postId, { maxEp });
+        }
         results.push({
           id: postId,
           name: title,
@@ -141,13 +158,29 @@ async function getEpisodes(postId) {
   const detail = await getStreamDetail(postId);
   if (!detail) return [];
 
-  return detail.urls.map((url, index) => ({
+  // Dedupe while preserving order
+  const seen = new Set();
+  let urls = [];
+  for (const u of detail.urls) {
+    if (!seen.has(u)) {
+      seen.add(u);
+      urls.push(u);
+    }
+  }
+
+  // Cap to the episode count shown on the site (from catalog title like "EP 76")
+  const maxEp = await getMaxEpFromSeriesPage(postId);
+  if (maxEp && urls.length > maxEp) {
+    urls = urls.slice(0, maxEp);
+  }
+
+  return urls.map((url, index) => ({
     id: `vip:${postId}:${index + 1}`,
     title: detail.title,
     season: 1,
     episode: index + 1,
     thumbnail: normalizePoster(detail.thumbnail),
-    released: new Date().toISOString()
+    released: new Date().toISOString(),
   }));
 }
 
