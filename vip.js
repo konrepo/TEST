@@ -19,6 +19,12 @@ const manifest = {
       name: "VIP Latest",
       extraSupported: ["search", "skip"],
     },
+    {
+      type: "series",
+      id: "iDrana",
+      name: "iDrama Latest",
+      extraSupported: ["search", "skip"],
+    }    
   ],
 };
 
@@ -126,7 +132,7 @@ async function getStreamDetail(postId) {
 }
 
 /* =========================
-   SCRAPE CATALOG
+   SCRAPE CATALOG VIP
 ========================= */
 async function getItems(url) {
   const { data } = await axiosClient.get(url);
@@ -209,40 +215,97 @@ async function getEpisodes(postId) {
 }
 
 /* =========================
+    SCRAPE CATALOG iDrama
+========================= */
+async function getIdramaItems(url) {
+  const { data } = await axiosClient.get(url);
+  const $ = cheerio.load(data);
+
+  const articles = $("article.hitmag-post").toArray();
+
+  const results = await Promise.all(
+    articles.map(async (el) => {
+      const $el = $(el);
+      const a = $el.find("h3.entry-title a").first();
+      if (!a.length) return null;
+
+      const title = a.text().trim();
+      const link = a.attr("href");
+
+      const img = $el.find(".archive-thumb img").first();
+      let poster =
+        img.attr("data-src") ||
+        img.attr("src") ||
+        "";
+
+      if (!title || !link) return null;
+
+      try {
+        const postId = await getPostId(link);
+        if (!postId) return null;
+
+        return {
+          id: postId,
+          name: title,
+          poster: normalizePoster(poster),
+        };
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return results.filter(Boolean);
+}
+
+/* =========================
    CATALOG
 ========================= */
-builder.defineCatalogHandler(async ({ extra }) => {
+builder.defineCatalogHandler(async ({ id, extra }) => {
   try {
-    const pageSize = 30; // VIP shows 30 per page
+    const pageSize = 30;
     const skip = Number(extra?.skip || 0);
     const page = Math.floor(skip / pageSize) + 1;
 
-    const url =
-      page === 1
+    let url;
+
+    if (id === "vip") {
+      url = page === 1
         ? BASE_URL
         : `${BASE_URL}/page/${page}/`;
 
-    const items = await getItems(url);
-
-    let metas = items.map((item) => ({
-      id: item.id,
-      type: "series",
-      name: item.name,
-      poster: item.poster,
-      posterShape: "poster",
-    }));
-
-    // search filter
-    if (extra?.search) {
-      const search = extra.search.toLowerCase();
-      metas = metas.filter((m) =>
-        m.name.toLowerCase().includes(search)
-      );
+      const items = await getItems(url);
+      return {
+        metas: items.map(item => ({
+          id: item.id,
+          type: "series",
+          name: item.name,
+          poster: item.poster,
+          posterShape: "poster"
+        }))
+      };
     }
 
-    return { metas };
+    if (id === "idrama") {
+      url = page === 1
+        ? "https://www.idramahd.com/"
+        : `https://www.idramahd.com/page/${page}/`;
 
-  } catch (err) {
+      const items = await getIdramaItems(url);
+      return {
+        metas: items.map(item => ({
+          id: item.id,
+          type: "series",
+          name: item.name,
+          poster: item.poster,
+          posterShape: "poster"
+        }))
+      };
+    }
+
+    return { metas: [] };
+
+  } catch {
     return { metas: [] };
   }
 });
