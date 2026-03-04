@@ -9,20 +9,21 @@ const manifest = {
   id: "community.khmer.vip",
   version: "1.0.0",
   name: "Khmer VIP",
-  description: "Khmer VIP Blogger Streams",
+  description: "Stream Asian dramas dubbed in Khmer | Dev: TheDevilz.",
+  logo: "https://avatars.githubusercontent.com/u/32822347?v=4",
   resources: ["catalog", "meta", "stream"],
   types: ["series"],
   catalogs: [
     {
       type: "series",
       id: "vip",
-      name: "VIP Latest",
+      name: "Phumikhmer",
       extraSupported: ["search", "skip"],
     },
     {
       type: "series",
       id: "idrama",
-      name: "iDrama Latest",
+      name: "iDramaHD",
       extraSupported: ["search", "skip"],
     }    
   ],
@@ -215,7 +216,7 @@ async function getEpisodes(postId) {
 }
 
 /* =========================
-    SCRAPE CATALOG iDrama
+    SCRAPE CATALOG IDRAMA
 ========================= */
 async function getIdramaItems(url) {
   const { data } = await axiosClient.get(url);
@@ -269,12 +270,21 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 
     let url;
 
+    // =========================
+    // VIP
+    // =========================
     if (id === "vip") {
-      url = page === 1
-        ? BASE_URL
-        : `${BASE_URL}/page/${page}/`;
+
+      if (extra?.search) {
+        url = `${BASE_URL}/?s=${encodeURIComponent(extra.search)}`;
+      } else {
+        url = page === 1
+          ? BASE_URL
+          : `${BASE_URL}/page/${page}/`;
+      }
 
       const items = await getItems(url);
+
       return {
         metas: items.map(item => ({
           id: item.id,
@@ -286,12 +296,21 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       };
     }
 
+    // =========================
+    // IDRAMA
+    // =========================
     if (id === "idrama") {
-      url = page === 1
-        ? "https://www.idramahd.com/"
-        : `https://www.idramahd.com/page/${page}/`;
+
+      if (extra?.search) {
+        url = `https://www.idramahd.com/?s=${encodeURIComponent(extra.search)}`;
+      } else {
+        url = page === 1
+          ? "https://www.idramahd.com/"
+          : `https://www.idramahd.com/page/${page}/`;
+      }
 
       const items = await getIdramaItems(url);
+
       return {
         metas: items.map(item => ({
           id: item.id,
@@ -305,7 +324,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 
     return { metas: [] };
 
-  } catch {
+  } catch (err) {
     return { metas: [] };
   }
 });
