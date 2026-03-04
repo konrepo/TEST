@@ -93,8 +93,8 @@ async function getItems(url) {
     if (!title || !link) continue;
 
     const poster =
-      img.attr("data-src") ||
-      img.attr("src") ||
+      $el.find("a.img-holder").attr("data-src") ||
+      $el.find("a.img-holder").attr("data-bsrjs") ||
       "";
 
     try {
