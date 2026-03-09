@@ -275,11 +275,19 @@ async function getStream(prefix, seriesUrl, episode) {
     url = resolved;
   }
 
+  let streamType;
+
+  if (url.includes("mediadelivery.net/embed")) {
+    streamType = "iframe";
+  } else if (url.includes(".m3u8")) {
+    streamType = "hls";
+  }
+
   return {
     url,
     name: "KhmerDub",
     title: `Episode ${episode}`,
-    type: url.includes(".m3u8") ? "hls" : undefined,
+    type: streamType,
     behaviorHints: { group: "khmerdub" },
   };
 }
