@@ -3,7 +3,7 @@ module.exports = {
   version: "1.2.0-test",
   name: "KhmerDub Test",
   description: "Stream Experimental Build | Dev: TheDevilz.",
-  logo: "https://avatars.githubusercontent.com/u/32822347?v=4",
+  logo: "https://raw.githubusercontent.com/konrepo/VIP/refs/heads/main/test.png",
   resources: ["catalog", "meta", "stream"],
   types: ["series"],
   catalogs: [
