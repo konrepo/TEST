@@ -1,8 +1,8 @@
 module.exports = {
-  id: "community.khmer.dubbed",
-  version: "1.1.1",
-  name: "KhmerDub",
-  description: "Stream Asian dramas dubbed in Khmer | Dev: TheDevilz.",
+  id: "community.khmer.test",
+  version: "1.2.0-test",
+  name: "KhmerDub Test",
+  description: "Stream Experimental Build | Dev: TheDevilz.",
   logo: "https://avatars.githubusercontent.com/u/32822347?v=4",
   resources: ["catalog", "meta", "stream"],
   types: ["series"],
