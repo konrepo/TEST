@@ -150,7 +150,7 @@ async function getEpisodes(prefix, seriesUrl) {
 
     return info.urls.map((url, index) => ({
       id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
-      title: "Sunday Episode",
+      title:  `Episode ${index + 1}`,
       season: 1,
       episode: index + 1,
       thumbnail: info.poster || info.fanart || "",
@@ -162,6 +162,7 @@ async function getEpisodes(prefix, seriesUrl) {
     return [];
   }
 
+// VIP / iDrama   
   const detail = await getStreamDetail(postId);
 
   if (!detail) {
