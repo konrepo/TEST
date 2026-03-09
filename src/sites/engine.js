@@ -277,11 +277,20 @@ async function getStream(prefix, seriesUrl, episode) {
 
   let streamType;
 
+  // Convert Bunny iframe embed to HLS for iOS
   if (url.includes("mediadelivery.net/embed")) {
-    streamType = "iframe";
+    const parts = url.split("/");
+    const videoId = parts[parts.length - 1];
+
+    url = `https://iframe.mediadelivery.net/${videoId}/playlist.m3u8`;
+    streamType = "hls";
   } else if (url.includes(".m3u8")) {
     streamType = "hls";
+  } else if (url.match(/\.mp4(\?|$)/i)) {
+    streamType = "mp4";
   }
+
+  url = forceHttps(url);
 
   return {
     url,
