@@ -74,10 +74,30 @@ async function fetchFromBlog(blogId, postId) {
 
     thumbnail = normalizePoster(thumbnail);
 
-    const urls = extractVideoLinks(content);
+    let urls = extractVideoLinks(content);
+
+    // Sunday Bunny fallback (numeric IDs in Blogger feed)
+    if (!urls.length) {
+      const idRegex = /(\d+);/g;
+      const ids = [];
+      let match;
+
+      while ((match = idRegex.exec(content)) !== null) {
+        ids.push(match[1]);
+      }
+
+      if (ids.length) {
+        const libraryId = blogId; // use current blogId dynamically
+
+        urls = ids.map(id =>
+          `https://iframe.mediadelivery.net/embed/${libraryId}/${id}`
+        );
+      }
+    }
+
     if (!urls.length) return null;
 
-    return { title, thumbnail, urls };
+    return { title, thumbnail, urls }
   } catch {
     return null;
   }
