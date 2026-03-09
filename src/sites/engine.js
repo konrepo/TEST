@@ -104,29 +104,56 @@ async function getStreamDetail(postId) {
 /* =========================
    EPISODES
 ========================= */
+async function getSundayPlaylist(seriesUrl) {
+  const { data } = await axiosClient.get(seriesUrl);
+
+  // Extract poster (og:image)
+  const posterMatch = data.match(
+    /property=["']og:image["'][^>]*content=["']([^"']+)["']/i
+  );
+  const poster = posterMatch ? posterMatch[1] : "";
+
+  // Extract fanart from #fanta
+  const fantaMatch = data.match(
+    /<div[^>]+id=["']fanta["'][^>]*data-image=["']([^"']+)["']/i
+  );
+  const fanart = fantaMatch ? fantaMatch[1] : "";
+
+  // Extract playlist mp4 links
+  const fileRegex =
+    /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
+
+  const urls = [];
+  let match;
+  while ((match = fileRegex.exec(data)) !== null) {
+    urls.push(match[1]);
+  }
+
+  return {
+    urls,
+    poster,
+    fanart,
+  };
+}
+
 async function getEpisodes(prefix, seriesUrl) {
   const postId = await getPostId(seriesUrl);
   console.log("POST ID:", postId);
 
-  // Sunday playlist
+  // Sunday playlist fallback 
   if (!postId && prefix === "sunday") {
-    const { data } = await axiosClient.get(seriesUrl);
+    const info = await getSundayPlaylist(seriesUrl);
 
-    const fileRegex =
-      /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
-
-    const urls = [];
-    let match;
-    while ((match = fileRegex.exec(data)) !== null) {
-      urls.push(match[1]);
+    if (!info.urls.length) {
+      return [];
     }
 
-    return urls.map((url, index) => ({
+    return info.urls.map((url, index) => ({
       id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
       title: "Sunday Episode",
       season: 1,
       episode: index + 1,
-      thumbnail: "",
+      thumbnail: info.poster || info.fanart || "",
       released: new Date().toISOString(),
     }));
   }
@@ -192,6 +219,26 @@ async function resolvePlayerUrl(playerUrl) {
    STREAM
 ========================= */
 async function getStream(prefix, seriesUrl, episode) {
+
+  // Sunday playlist fallback
+  if (prefix === "sunday") {
+    const info = await getSundayPlaylist(seriesUrl);
+
+    if (!info.urls.length) return null;
+
+    const epIndex = episode - 1;
+    const fileUrl = info.urls[epIndex];
+
+    if (!fileUrl) return null;
+
+    return {
+      url: fileUrl,
+      name: "KhmerDub",
+      title: `Episode ${episode}`,
+    };
+  }
+
+  // VIP / iDrama / Blogger Sunday
   const postId = await getPostId(seriesUrl);
   if (!postId) return null;
 
@@ -308,4 +355,5 @@ module.exports = {
   getCatalogItems,
   getEpisodes,
   getStream,
+  getSundayPlaylist,
 };
