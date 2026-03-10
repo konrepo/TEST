@@ -48,8 +48,24 @@ function extractMaxEpFromTitle(title) {
   return match ? parseInt(match[1], 10) : null;
 }
 
+function extractOkIds(text) {
+  if (!text) return [];
+
+  // matches long numeric ids followed by semicolon or newline
+  const idRegex = /(^|[\s;])(\d{10,})(?=\s*;|\s|$)/g;
+
+  const ids = [];
+  let m;
+  while ((m = idRegex.exec(text)) !== null) {
+    ids.push(m[2]);
+  }
+
+  return Array.from(new Set(ids));
+}
+
 module.exports = {
   normalizePoster,
   extractVideoLinks,
-  extractMaxEpFromTitle
+  extractMaxEpFromTitle,
+  extractOkIds
 };
