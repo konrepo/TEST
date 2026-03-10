@@ -198,6 +198,37 @@ async function resolvePlayerUrl(playerUrl) {
    STREAM
 ========================= */
 async function getStream(prefix, seriesUrl, episode) {
+  // Sunday fallback streaming
+  if (prefix === "sunday") {
+    const { data } = await axiosClient.get(seriesUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Referer: seriesUrl
+      }
+    });
+
+    const links = extractVideoLinks(data);
+
+    const url = links[episode - 1];
+    if (!url) return null;
+
+    return {
+      url,
+      name: "KhmerDub",
+      title: `Episode ${episode}`,
+      type: url.includes(".m3u8") ? "hls" : undefined,
+      behaviorHints: {
+        group: "khmerdub",
+        proxyHeaders: {
+          request: {
+            Referer: seriesUrl,
+            Origin: "https://www.sundaydrama.com"
+          }
+        }
+      }
+    };
+  }
+
   const postId = await getPostId(seriesUrl);
   if (!postId) return null;
 
