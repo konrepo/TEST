@@ -256,18 +256,34 @@ async function getStream(prefix, seriesUrl, episode) {
   if (!postId) return null;
 
   const detail = await getStreamDetail(postId);
-  if (!detail) return null;
+  if (!detail) {
+	  console.log("No detail found for postId:", postId);
+	  return null;
+  }
+  
+  console.log("DETAIL URLS:", detail.urls);
 
   let url = detail.urls[episode - 1];
-  if (!url) return null;
+  if (!url) {
+	  console.log("No URL for episode:", episode);
+	  return null;
+  }
+
+  console.log("Selected URL:", url);
 
   if (url.includes("player.php")) {
     const resolved = await resolvePlayerUrl(url);
-    if (!resolved) return null;
+    if (!resolved) {
+		console.log("Player resolve failed");
+		return null;
+	}
     url = resolved;
   }
 
   const isOk = /ok\.ru|okcdn\.ru/i.test(url);
+  console.log("Is OK stream:", isOk);
+
+  console.log("Returning stream:", url);
 
   return {
     url,
