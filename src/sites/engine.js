@@ -198,8 +198,10 @@ async function resolvePlayerUrl(playerUrl) {
    STREAM
 ========================= */
 async function getStream(prefix, seriesUrl, episode) {
+  const postId = await getPostId(seriesUrl);
   // Sunday fallback streaming
-  if (prefix === "sunday") {
+  if (prefix === "sunday" && !postId) {
+
     const { data } = await axiosClient.get(seriesUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0",
@@ -208,7 +210,6 @@ async function getStream(prefix, seriesUrl, episode) {
     });
 
     const links = extractVideoLinks(data);
-
     const url = links[episode - 1];
     if (!url) return null;
 
@@ -229,7 +230,6 @@ async function getStream(prefix, seriesUrl, episode) {
     };
   }
 
-  const postId = await getPostId(seriesUrl);
   if (!postId) return null;
 
   const detail = await getStreamDetail(postId);
