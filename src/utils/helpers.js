@@ -48,21 +48,8 @@ function extractMaxEpFromTitle(title) {
   return match ? parseInt(match[1], 10) : null;
 }
 
-function forceHttps(u) {
-  return (u || "").replace(/^http:\/\//i, "https://");
-}
-
-function guessType(u) {
-  if (!u) return undefined;
-  if (u.includes(".m3u8")) return "hls";
-  if (u.match(/\.mp4(\?|$)/i)) return "mp4";
-  return undefined;
-}
-
 module.exports = {
   normalizePoster,
   extractVideoLinks,
-  extractMaxEpFromTitle,
-  forceHttps,
-  guessType
+  extractMaxEpFromTitle
 };

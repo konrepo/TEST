@@ -239,27 +239,13 @@ builder.defineMetaHandler(async ({ id }) => {
 
     const first = episodes[0];
 
-    let poster = first.thumbnail;
-    let background = first.thumbnail;
-
-    // Sunday artwork enhancement
-    if (prefix === "sunday") {
-      const info = siteEngine.getSundayPlaylist
-        ? await siteEngine.getSundayPlaylist(seriesUrl)
-        : null;
-
-      poster = info?.poster || poster;
-      background = info?.fanart || info?.poster || poster;
-    }
-
     return {
       meta: {
         id,
         type: "series",
         name: first.title,
-        poster,
-        background,
-        posterShape: "poster",
+        poster: first.thumbnail,
+        background: first.thumbnail,
         videos: episodes,
       },
     };

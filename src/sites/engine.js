@@ -74,30 +74,10 @@ async function fetchFromBlog(blogId, postId) {
 
     thumbnail = normalizePoster(thumbnail);
 
-    let urls = extractVideoLinks(content);
-
-    // Sunday Bunny fallback (numeric IDs in Blogger feed)
-    if (!urls.length) {
-      const idRegex = /(\d+);/g;
-      const ids = [];
-      let match;
-
-      while ((match = idRegex.exec(content)) !== null) {
-        ids.push(match[1]);
-      }
-
-      if (ids.length) {
-        const libraryId = blogId; // use current blogId dynamically
-
-        urls = ids.map(id =>
-          `https://iframe.mediadelivery.net/embed/${libraryId}/${id}`
-        );
-      }
-    }
-
+    const urls = extractVideoLinks(content);
     if (!urls.length) return null;
 
-    return { title, thumbnail, urls }
+    return { title, thumbnail, urls };
   } catch {
     return null;
   }
@@ -124,56 +104,35 @@ async function getStreamDetail(postId) {
 /* =========================
    EPISODES
 ========================= */
-async function getSundayPlaylist(seriesUrl) {
-  const { data } = await axiosClient.get(seriesUrl);
-
-  // Extract poster (og:image)
-  const posterMatch = data.match(
-    /property=["']og:image["'][^>]*content=["']([^"']+)["']/i
-  );
-  const poster = posterMatch ? posterMatch[1] : "";
-
-  // Extract fanart from #fanta
-  const fantaMatch = data.match(
-    /<div[^>]+id=["']fanta["'][^>]*data-image=["']([^"']+)["']/i
-  );
-  const fanart = fantaMatch ? fantaMatch[1] : "";
-
-  // Extract playlist mp4 links
-  const fileRegex =
-    /file\s*:\s*["'](https?:\/\/[^"']+)["']/gi;
-
-  const urls = [];
-  let match;
-  while ((match = fileRegex.exec(data)) !== null) {
-    urls.push(match[1]);
-  }
-
-  return {
-    urls,
-    poster,
-    fanart,
-  };
-}
-
 async function getEpisodes(prefix, seriesUrl) {
   const postId = await getPostId(seriesUrl);
   console.log("POST ID:", postId);
 
-  // Sunday playlist fallback 
+  // Sunday playlist
   if (!postId && prefix === "sunday") {
-    const info = await getSundayPlaylist(seriesUrl);
+    const { data } = await axiosClient.get(seriesUrl);
+	
+    const $ = cheerio.load(data);	
+	const pagePoster =
+      $("meta[property='og:image']").attr("content") ||
+	  $("link[rel='image_src']").attr("href") ||
+	  "";
 
-    if (!info.urls.length) {
-      return [];
+    const fileRegex =
+      /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
+
+    const urls = [];
+    let match;
+    while ((match = fileRegex.exec(data)) !== null) {
+      urls.push(match[1]);
     }
 
-    return info.urls.map((url, index) => ({
+    return urls.map((url, index) => ({
       id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
-      title:  `Episode ${index + 1}`,
+      title: `Episode ${index + 1}`,
       season: 1,
       episode: index + 1,
-      thumbnail: info.poster || info.fanart || "",
+      thumbnail: normalizePoster(pagePoster),
       released: new Date().toISOString(),
     }));
   }
@@ -182,7 +141,6 @@ async function getEpisodes(prefix, seriesUrl) {
     return [];
   }
 
-// VIP / iDrama   
   const detail = await getStreamDetail(postId);
 
   if (!detail) {
@@ -240,26 +198,6 @@ async function resolvePlayerUrl(playerUrl) {
    STREAM
 ========================= */
 async function getStream(prefix, seriesUrl, episode) {
-
-  // Sunday playlist fallback
-  if (prefix === "sunday") {
-    const info = await getSundayPlaylist(seriesUrl);
-
-    if (!info.urls.length) return null;
-
-    const epIndex = episode - 1;
-    const fileUrl = info.urls[epIndex];
-
-    if (!fileUrl) return null;
-
-    return {
-      url: fileUrl,
-      name: "KhmerDub",
-      title: `Episode ${episode}`,
-    };
-  }
-
-  // VIP / iDrama / Blogger Sunday
   const postId = await getPostId(seriesUrl);
   if (!postId) return null;
 
@@ -275,29 +213,11 @@ async function getStream(prefix, seriesUrl, episode) {
     url = resolved;
   }
 
-  let streamType;
-
-  // Convert Bunny iframe embed to HLS for iOS
-  if (url.includes("mediadelivery.net/embed")) {
-    const parts = url.split("/");
-    const videoId = parts[parts.length - 1];
-
-    url = `https://iframe.mediadelivery.net/${videoId}/playlist.m3u8`;
-    streamType = "hls";
-  } else if (url.includes(".m3u8")) {
-    streamType = "hls";
-  } else if (url.match(/\.mp4(\?|$)/i)) {
-    streamType = "mp4";
-  }
-
-  url = forceHttps(url);
-  console.log("FINAL STREAM URL:", url);
-
   return {
     url,
     name: "KhmerDub",
     title: `Episode ${episode}`,
-    type: streamType,
+    type: url.includes(".m3u8") ? "hls" : undefined,
     behaviorHints: { group: "khmerdub" },
   };
 }
@@ -394,5 +314,4 @@ module.exports = {
   getCatalogItems,
   getEpisodes,
   getStream,
-  getSundayPlaylist,
 };
