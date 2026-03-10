@@ -1,6 +1,6 @@
 const cheerio = require("cheerio");
 const axiosClient = require("../utils/fetch");
-const { normalizePoster, extractVideoLinks, extractMaxEpFromTitle } = require("../utils/helpers");
+const { normalizePoster, extractVideoLinks, extractMaxEpFromTitle, extractOkIds } = require("../utils/helpers");
 const { URL_TO_POSTID, POST_INFO, BLOG_IDS } = require("../utils/cache");
 
 /* =========================
@@ -34,11 +34,19 @@ async function getPostId(url) {
   }  
 
   if (!postId) return null;
-
-  // Extract max EP from title
+  
+  // Extract max EP from title OR from SundayDrama "episode/END.xx"
   const pageTitle = $("title").text();
-  const maxEpMatch = pageTitle.match(/\[EP\s*(\d+)\]/i);
-  const maxEp = maxEpMatch ? parseInt(maxEpMatch[1], 10) : null;
+  let maxEp = extractMaxEpFromTitle(pageTitle);
+
+  // SundayDrama often has: <b>episode/END.70</b>
+  if (!maxEp) {
+    const epText =
+      $('b:contains("episode/")').first().text() || "";
+
+    const m = epText.match(/episode\/(?:END\.)?(\d+)/i);
+    if (m) maxEp = parseInt(m[1], 10);
+  } 
 
   URL_TO_POSTID.set(url, postId);
 
@@ -74,7 +82,18 @@ async function fetchFromBlog(blogId, postId) {
 
     thumbnail = normalizePoster(thumbnail);
 
-    const urls = extractVideoLinks(content);
+    let urls = extractVideoLinks(content);
+
+    // If blogger post stores OK.ru IDs (like: 9488...; 9488...; {embed=ok})
+    if (!urls.length) {
+      const hasOkEmbed = /\{embed\s*=\s*ok\}/i.test(content);
+      const okIds = extractOkIds(content);
+
+      if (hasOkEmbed && okIds.length) {
+		urls = okIds.map(id => `https://ok.ru/videoembed/${id}`);
+      }
+    }
+
     if (!urls.length) return null;
 
     return { title, thumbnail, urls };
