@@ -224,9 +224,9 @@ async function resolveOkEmbed(embedUrl) {
     }
   });
 
-  // Extract escaped ondemandHls URL directly
+  // Match escaped ondemandHls inside metadata
   const hlsMatch = data.match(
-    /&quot;ondemandHls&quot;:&quot;(https:\/\/[^"]+\.m3u8[^"]*)&quot;/
+    /\\\"ondemandHls\\\":\\\"(https:\/\/[^"]+\.m3u8[^"]*)\\\"/
   );
 
   if (!hlsMatch) {
@@ -238,6 +238,7 @@ async function resolveOkEmbed(embedUrl) {
     .replace(/\\u0026/g, "&")
     .replace(/\\\//g, "/");
 }
+
 /* =========================
    STREAM
 ========================= */
