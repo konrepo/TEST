@@ -224,35 +224,20 @@ async function resolveOkEmbed(embedUrl) {
     }
   });
 
-  // Match escaped metadata string
-  const metadataMatch = data.match(/&quot;metadata&quot;:&quot;({.*?})&quot;/s);
+  // Extract escaped ondemandHls URL directly
+  const hlsMatch = data.match(
+    /&quot;ondemandHls&quot;:&quot;(https:\/\/[^"]+\.m3u8[^"]*)&quot;/
+  );
 
-  if (!metadataMatch) {
-    console.log("OK: metadata not found");
-    return null;
-  }
-
-  try {
-    const metadataJson = metadataMatch[1]
-      .replace(/\\&quot;/g, '"')  // unescape embedded quotes
-      .replace(/&quot;/g, '"')
-      .replace(/\\u0026/g, "&");
-
-    const metadata = JSON.parse(metadataJson);
-
-    if (metadata.ondemandHls) {
-      return metadata.ondemandHls;
-    }
-
+  if (!hlsMatch) {
     console.log("OK: ondemandHls not found");
     return null;
-
-  } catch (e) {
-    console.log("OK: metadata parse failed");
-    return null;
   }
-}
 
+  return hlsMatch[1]
+    .replace(/\\u0026/g, "&")
+    .replace(/\\\//g, "/");
+}
 /* =========================
    STREAM
 ========================= */
