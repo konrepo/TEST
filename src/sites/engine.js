@@ -224,10 +224,10 @@ async function resolveOkEmbed(embedUrl) {
     }
   });
 
-  // Match exactly until .m3u8
-  const hlsMatch = data.match(
-    /\\&quot;ondemandHls\\&quot;:\\&quot;(https:\/\/[^"]+?\.m3u8)/
-  );
+  // Try both escaped and non-escaped &quot; variants
+  const hlsMatch =
+    data.match(/\\&quot;ondemandHls\\&quot;:\\&quot;(https:\/\/[^"]+?\.m3u8)/) ||
+    data.match(/&quot;ondemandHls&quot;:&quot;(https:\/\/[^"]+?\.m3u8)/);
 
   if (!hlsMatch) {
     console.log("OK: ondemandHls not found");
@@ -236,7 +236,9 @@ async function resolveOkEmbed(embedUrl) {
 
   return hlsMatch[1]
     .replace(/\\u0026/g, "&")
-    .replace(/\\\//g, "/");
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/g, "&")
+    .replace(/\\&quot;.*/g, ""); // safety: cut anything after if it appears
 }
 
 /* =========================
