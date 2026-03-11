@@ -224,41 +224,32 @@ async function resolveOkEmbed(embedUrl) {
     }
   });
 
-  // Try direct HLS in page
-  const hlsDirect =
-    data.match(/"hlsMasterUrl"\s*:\s*"([^"]+)"/i) ||
-    data.match(/"hlsManifestUrl"\s*:\s*"([^"]+)"/i);
+  // Extract flashvars.metadata JSON string
+  const metadataMatch = data.match(/"metadata":"({.*?})"/s);
 
-  if (hlsDirect) {
-    return hlsDirect[1]
-      .replace(/\\u0026/g, "&")
-      .replace(/\\\//g, "/");
+  if (!metadataMatch) {
+    console.log("OK: metadata not found");
+    return null;
   }
 
-  // Try inside window.__PLAYER_CONFIG__
-  const configMatch = data.match(/window\.__PLAYER_CONFIG__\s*=\s*(\{.*?\});/s);
+  try {
+    const metadataJson = metadataMatch[1]
+      .replace(/\\"/g, '"')        // unescape quotes
+      .replace(/\\u0026/g, "&");   // fix &
 
-  if (configMatch) {
-    try {
-      const config = JSON.parse(configMatch[1]);
-      if (config?.hlsManifestUrl) {
-        return config.hlsManifestUrl;
-      }
-    } catch (e) {
-      console.log("OK: PLAYER_CONFIG parse failed");
+    const metadata = JSON.parse(metadataJson);
+
+    if (metadata.ondemandHls) {
+      return metadata.ondemandHls;
     }
-  }
 
-  // Fallback: search any .m3u8 in page
-  const m3u8Match = data.match(/https?:\/\/[^"]+\.m3u8[^"]*/i);
-  if (m3u8Match) {
-    return m3u8Match[0]
-      .replace(/\\u0026/g, "&")
-      .replace(/\\\//g, "/");
-  }
+    console.log("OK: ondemandHls not found");
+    return null;
 
-  console.log("OK: HLS not found in page");
-  return null;
+  } catch (e) {
+    console.log("OK: metadata parse failed");
+    return null;
+  }
 }
 
 /* =========================
