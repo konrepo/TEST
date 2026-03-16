@@ -1,19 +1,24 @@
 const cheerio = require("cheerio");
 const axiosClient = require("../utils/fetch");
-const { normalizePoster, extractVideoLinks, extractMaxEpFromTitle, extractOkIds } = require("../utils/helpers");
+const { normalizePoster, extractVideoLinks, extractMaxEpFromTitle, extractOkIds, uniqById } = require("../utils/helpers");
 const { URL_TO_POSTID, POST_INFO, BLOG_IDS } = require("../utils/cache");
+
+const FILE_REGEX =
+  /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;  
 
 /* =========================
    GET POST ID
 ========================= */
 async function getPostId(url) {
-  if (URL_TO_POSTID.has(url)) return URL_TO_POSTID.get(url);
+  if (URL_TO_POSTID.has(url)) {
+	  return URL_TO_POSTID.get(url);
+  }
 
   const { data } = await axiosClient.get(url);
   const $ = cheerio.load(data);
 
   // VIP / iDrama
-  let postId = $("div#player").attr("data-post-id");
+  let postId = $("#player").attr("data-post-id");
 
   // SundayDrama
   if (!postId) {
@@ -109,15 +114,20 @@ async function getStreamDetail(postId) {
   const cached = POST_INFO.get(postId);
   if (cached?.detail) return cached.detail;
 
-  for (const blogId of Object.values(BLOG_IDS)) {
-    const detail = await fetchFromBlog(blogId, postId);
-    if (detail) {
-      POST_INFO.set(postId, { ...(POST_INFO.get(postId) || {}), detail });
-      return detail;
-    }
+  const results = await Promise.all(
+    Object.values(BLOG_IDS).map(blogId =>
+      fetchFromBlog(blogId, postId)
+    )
+  );
+
+  const detail = results.find(Boolean);
+  if (!detail) {
+    return null;
   }
 
-  return null;
+  POST_INFO.set(postId, { ...(POST_INFO.get(postId) || {}), detail });
+
+  return detail;
 }
 
 /* =========================
@@ -125,33 +135,34 @@ async function getStreamDetail(postId) {
 ========================= */
 async function getEpisodes(prefix, seriesUrl) {
   const postId = await getPostId(seriesUrl);
-  console.log("POST ID:", postId);
 
   // Sunday playlist
-  if (!postId && prefix === "sunday") {
+  if (!postId && prefix === "sunday") {  
     const { data } = await axiosClient.get(seriesUrl);
-	
-    const $ = cheerio.load(data);	
-	const pagePoster =
-      $("meta[property='og:image']").attr("content") ||
-	  $("link[rel='image_src']").attr("href") ||
-	  "";
 
-    const fileRegex =
-      /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
+    FILE_REGEX.lastIndex = 0;
 
     const urls = [];
     let match;
-    while ((match = fileRegex.exec(data)) !== null) {
+
+    while ((match = FILE_REGEX.exec(data)) !== null) {
       urls.push(match[1]);
     }
+
+    const $ = cheerio.load(data);	
+    const pagePoster =
+      $("meta[property='og:image']").attr("content") ||
+      $("link[rel='image_src']").attr("href") ||
+      "";
+
+    const normalizedPoster = normalizePoster(pagePoster);
 
     return urls.map((url, index) => ({
       id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
       title: `Episode ${index + 1}`,
       season: 1,
       episode: index + 1,
-      thumbnail: normalizePoster(pagePoster),
+      thumbnail: normalizedPoster,
       released: new Date().toISOString(),
     }));
   }
@@ -168,15 +179,7 @@ async function getEpisodes(prefix, seriesUrl) {
 
   const maxEp = POST_INFO.get(postId)?.maxEp || null;
 
-  const seen = new Set();
-  let urls = [];
-
-  for (const u of detail.urls) {
-    if (!seen.has(u)) {
-      seen.add(u);
-      urls.push(u);
-    }
-  }
+  let urls = [...new Set(detail.urls)];
 
   if (maxEp && urls.length > maxEp) {
     urls = urls.slice(0, maxEp);
@@ -230,7 +233,6 @@ async function resolveOkEmbed(embedUrl) {
     data.match(/&quot;ondemandHls&quot;:&quot;(https:\/\/[^"]+?\.m3u8)/);
 
   if (!hlsMatch) {
-    console.log("OK: ondemandHls not found");
     return null;
   }
 
@@ -239,6 +241,29 @@ async function resolveOkEmbed(embedUrl) {
     .replace(/\\\//g, "/")
     .replace(/&amp;/g, "&")
     .replace(/\\&quot;.*/g, ""); // safety: cut anything after if it appears
+}
+
+
+function buildStream(url, episode) {
+  const isOk = /ok\.ru|okcdn\.ru/i.test(url);
+
+  return {
+    url,
+    name: "KhmerDub",
+    title: `Episode ${episode}`,
+    type: url.includes(".m3u8") ? "hls" : undefined,
+    behaviorHints: isOk
+      ? {
+          group: "khmerdub",
+          proxyHeaders: {
+            request: {
+              Referer: "https://ok.ru/",
+              Origin: "https://ok.ru"
+            }
+          }
+        }
+      : { group: "khmerdub" }
+  };
 }
 
 /* =========================
@@ -260,49 +285,26 @@ async function getStream(prefix, seriesUrl, episode) {
     const url = links[episode - 1];
     if (!url) return null;
 
-    const isOk = /ok\.ru|okcdn\.ru/i.test(url);
-
-    return {
-      url,
-      name: "KhmerDub",
-      title: `Episode ${episode}`,
-      type: url.includes(".m3u8") ? "hls" : undefined,
-      behaviorHints: isOk 
-		? {
-			group: "khmerdub",
-			proxyHeaders: {
-			  request: {
-				Referer: "https://ok.ru/",
-				Origin: "https://ok.ru",
-			  },
-			},
-		}
-      : { group: "khmerdub" },
-    };
+    return buildStream(url, episode);
   }
 
   if (!postId) return null;
 
   const detail = await getStreamDetail(postId);
   if (!detail) {
-	  console.log("No detail found for postId:", postId);
-	  return null;
+	return null;
   }
-  
-  console.log("DETAIL URLS:", detail.urls);
 
   let url = detail.urls[episode - 1];
   if (!url) {
-	  console.log("No URL for episode:", episode);
-	  return null;
+	return null;
   }
 
   // Resolve player.php first
   if (url.includes("player.php")) {
 	  const resolved = await resolvePlayerUrl(url);
 	  if (!resolved) {
-		  console.log("Player resolve failed");
-		  return null;
+		return null;
 	  }
 	  url = resolved;
   }
@@ -311,34 +313,12 @@ async function getStream(prefix, seriesUrl, episode) {
   if (url.includes("ok.ru/videoembed/")) {
 	  const resolved = await resolveOkEmbed(url);
 	  if (!resolved) {
-		  console.log("OK embed resolve failed");
-		  return null;
+		return null;
 	  }
 	  url = resolved;
   }
 
-  console.log("Final URL:", url);
-
-  const isOk = /ok\.ru|okcdn\.ru/i.test(url);
-  console.log("Is OK stream:", isOk);
-
-  return {
-	  url,
-	  name: "KhmerDub",
-	  title: `Episode ${episode}`,
-	  type: url.includes(".m3u8") ? "hls" : undefined,
-	  behaviorHints: isOk
-		  ? {
-			  group: "khmerdub",
-			  proxyHeaders: {
-				  request: {
-					  Referer: "https://ok.ru/",
-					  Origin: "https://ok.ru"
-				  }
-			  }
-		  }
-		  : { group: "khmerdub" }
-  };
+  return buildStream(url, episode);
 }
 
 /* =========================
@@ -346,60 +326,59 @@ async function getStream(prefix, seriesUrl, episode) {
 ========================= */
 async function getCatalogItems(prefix, siteConfig, url) {
   try {
-  const { data } = await axiosClient.get(url);
-  
-  const $ = cheerio.load(data);
-  
-  // === Sunday Blogger Pagination Support (ADD ONLY) ===
-  if (prefix === "sunday") {
-    const allItems = [];
-    let currentUrl = url;
-    const PAGES_PER_BATCH = 3;
 
-    for (let i = 0; i < PAGES_PER_BATCH && currentUrl; i++) {
-      const { data: pageData } = await axiosClient.get(currentUrl);
-      const $$ = cheerio.load(pageData);
+    // === Sunday Blogger Pagination Support ===
+    if (prefix === "sunday") {
+      const allItems = [];
+      let currentUrl = url;
+      const BLOGGER_PAGES_PER_BATCH = 3;
 
-      const articles = $$(siteConfig.articleSelector).toArray();
+      for (let i = 0; i < BLOGGER_PAGES_PER_BATCH && currentUrl; i++) {
+        const { data: pageData } = await axiosClient.get(currentUrl);
+        const $$ = cheerio.load(pageData);
 
-      for (const el of articles) {
-        const $el = $$(el);
-        const a = $el.find(siteConfig.titleSelector).first();
+        const articles = $$(siteConfig.articleSelector).toArray();
 
-        const title =
-          a.attr("title")?.trim() ||
-          a.text().trim();
+        for (const el of articles) {
+          const $el = $$(el);
+          const a = $el.find(siteConfig.titleSelector).first();
 
-        const link = a.attr("href");
-        if (!title || !link) continue;
+          const title =
+            a.attr("title")?.trim() ||
+            a.text().trim();
 
-        let poster = "";
-        const posterEl = $el.find(siteConfig.posterSelector).first();
-        for (const attr of siteConfig.posterAttrs) {
-          poster = posterEl.attr(attr) || poster;
-          if (poster) break;
+          const link = a.attr("href");
+          if (!title || !link) continue;
+
+          let poster = "";
+          const posterEl = $el.find(siteConfig.posterSelector).first();
+          for (const attr of siteConfig.posterAttrs) {
+            poster = posterEl.attr(attr) || poster;
+            if (poster) break;
+          }
+
+          const normalizedPoster = normalizePoster(poster);
+
+          allItems.push({
+            id: `${prefix}:${encodeURIComponent(link)}`,
+            name: title,
+            poster: normalizedPoster,
+          });
         }
 
-        allItems.push({
-          id: `${prefix}:${encodeURIComponent(link)}`,
-          name: title,
-          poster: normalizePoster(poster),
-        });
+        const older = $$("a.blog-pager-older-link").attr("href");
+        currentUrl = older || null;
       }
 
-      const older = $$("a.blog-pager-older-link").attr("href");
-      currentUrl = older || null;
+      return uniqById(allItems);
     }
 
-    return Array.from(
-      new Map(allItems.map(x => [x.id, x])).values()
-    );
-  }
+    const { data } = await axiosClient.get(url);
+    const $ = cheerio.load(data);
 
-  const articles = $(siteConfig.articleSelector).toArray();
+    const articles = $(siteConfig.articleSelector).toArray();
 
-  const results = await Promise.all(
-    articles.map(async (el) => {
+    const results = articles.map((el) => {
       const $el = $(el);
       const a = $el.find(siteConfig.titleSelector).first();
 
@@ -414,19 +393,20 @@ async function getCatalogItems(prefix, siteConfig, url) {
         if (poster) break;
       }
 
+      const normalizedPoster = normalizePoster(poster);
+
       return {
         id: `${prefix}:${encodeURIComponent(link)}`,
         name: title,
-        poster: normalizePoster(poster),
+        poster: normalizedPoster,
       };
-    })
-  );
+    });
 
-  return results.filter(Boolean);
-  
-  } catch {;
+    return results.filter(Boolean);
+
+  } catch {
     return [];
-  }  
+  }
 }
 
 module.exports = {

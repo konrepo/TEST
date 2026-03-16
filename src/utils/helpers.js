@@ -5,27 +5,31 @@ function normalizePoster(url) {
     .replace(/=s\d+/, "=s0");
 }
 
+const DIRECT_REGEX =
+  /https?:\/\/[^\s"';<> ]+\.(?:m3u8|mp4)(?:\?[^\s"';<> ]+)?/gi;
+
+const OK_REGEX =
+  /https?:\/\/ok\.ru\/(?:videoembed|video)\/\d+/gi;
+
+const PLAYER_REGEX =
+  /https?:\/\/phumikhmer\.vip\/player\.php\?id=\d+/gi;
+
+const FILE_REGEX =
+  /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
+
 function extractVideoLinks(text) {
-  const directRegex =
-    /https?:\/\/[^\s"';<> ]+\.(?:m3u8|mp4)(?:\?[^\s"';<> ]+)?/gi;
-
-  const okRegex =
-    /https?:\/\/ok\.ru\/(?:videoembed|video)\/\d+/gi;
-
-  const playerRegex =
-    /https?:\/\/phumikhmer\.vip\/player\.php\?id=\d+/gi;
-
-  const fileRegex =
-    /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
-
-  const directMatches = text.match(directRegex) || [];
-  const okMatches = (text.match(okRegex) || [])
+  if (!text) return [];
+  const directMatches = text.match(DIRECT_REGEX) || [];
+  
+  const okMatches = (text.match(OK_REGEX) || [])
     .map(u => u.replace("/video/", "/videoembed/"));
-  const playerMatches = text.match(playerRegex) || [];
+  const playerMatches = text.match(PLAYER_REGEX) || [];
+  
+  FILE_REGEX.lastIndex = 0;
 
   const fileMatches = [];
   let match;
-  while ((match = fileRegex.exec(text)) !== null) {
+  while ((match = FILE_REGEX.exec(text)) !== null) {
     fileMatches.push(match[1]);
   }
 
@@ -63,9 +67,25 @@ function extractOkIds(text) {
   return Array.from(new Set(ids));
 }
 
+function mapMetas(items, type = "series") {
+  return items.map((item) => ({
+    id: item.id,
+    type,
+    name: item.name,
+    poster: item.poster,
+    posterShape: "poster"
+  }));
+}
+
+function uniqById(items) {
+  return [...new Map(items.map(item => [item.id, item])).values()];
+}
+
 module.exports = {
   normalizePoster,
   extractVideoLinks,
   extractMaxEpFromTitle,
-  extractOkIds
+  extractOkIds,
+  mapMetas,
+  uniqById
 };

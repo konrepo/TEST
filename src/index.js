@@ -5,13 +5,28 @@ const engine = require("./sites/engine");
 const khmerave = require("./sites/khmerave");
 const sites = require("./sites/config");
 
+const axiosClient = require("./utils/fetch");
+const cheerio = require("cheerio");
+const { normalizePoster, mapMetas, uniqById } = require("./utils/helpers");
+
+const TYPE = "series";
+
 const ENGINES = {
   vip: engine,
   sunday: engine,  
   idrama: engine,
-  khmerave: khmerave,
+  khmerave,
   merlkon: khmerave
 };
+
+function getSiteEngine(id) {
+  const site = sites[id];
+  const engine = ENGINES[id];
+
+  if (!site || !engine) return null;
+
+  return { site, engine };
+}
 
 const builder = new addonBuilder(manifest);
 
@@ -19,17 +34,14 @@ const builder = new addonBuilder(manifest);
    CATALOG
 ========================= */
 builder.defineCatalogHandler(async ({ id, extra }) => {
-
   try {
-    const site = sites[id];
-    if (!site) return { metas: [] };
+    const ctx = getSiteEngine(id);
+    if (!ctx) return { metas: [] };
 
-    const siteEngine = ENGINES[id];
-    if (!siteEngine) return { metas: [] };
+    const { site, engine: siteEngine } = ctx;
 
     // KhmerAve / Merlkon: search
     if (extra?.search && (id === "khmerave" || id === "merlkon")) {
-
       const keyword = encodeURIComponent(extra.search);
 
       const url = id === "merlkon"
@@ -38,74 +50,49 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 
       const items = await siteEngine.getCatalogItems(id, site, url);
 
-      return {
-        metas: items.map((item) => ({
-          id: item.id,
-          type: "series",
-          name: item.name,
-          poster: item.poster,
-          posterShape: "poster",
-        })),
-      };
+      return { metas: mapMetas(items, TYPE) };
     }
 
     // KhmerAve / Merlkon: paging
     if (id === "khmerave" || id === "merlkon") {
-
       const WEBSITE_PAGE_SIZE = site.pageSize || 18;
       const PAGES_PER_BATCH = 3;
 
       const skip = Number(extra?.skip || 0);
       const startPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
 
-      let allItems = [];
+      const base = String(site.baseUrl || "").replace(/\/$/, "");
+      const pages = [];
 
       for (let p = startPage; p < startPage + PAGES_PER_BATCH; p++) {
-
-        const base = String(site.baseUrl || "").replace(/\/$/, "");
-
         const url = p === 1
           ? `${base}/`
           : `${base}/page/${p}/`;
 
-        const pageItems = await siteEngine.getCatalogItems(id, site, url);
-        allItems = allItems.concat(pageItems);
+        pages.push(siteEngine.getCatalogItems(id, site, url));
       }
 
-      const uniq = [...new Map(allItems.map((x) => [x.id, x])).values()];
+      const results = await Promise.all(pages);
+      const allItems = results.flat();
+      const uniq = uniqById(allItems);
 
-      return {
-        metas: uniq.map((item) => ({
-          id: item.id,
-          type: "series",
-          name: item.name,
-          poster: item.poster,
-          posterShape: "poster",
-        })),
-      };
+      return { metas: mapMetas(uniq, TYPE) };
     }
 
     // SundayDrama (Blogger): search + paging
     if (id === "sunday") {
-      const axiosClient = require("./utils/fetch");
-      const cheerio = require("cheerio");
-      const { normalizePoster } = require("./utils/helpers"); 
-
       const base = String(site.baseUrl || "").replace(/\/$/, "");
 
-      // Blogger search + home URLs
       const startUrl = extra?.search
         ? `${base}/search?q=${encodeURIComponent(extra.search)}&max-results=20`
         : `${base}/?max-results=20`;
 
-      const WEBSITE_PAGE_SIZE = 20;  
+      const WEBSITE_PAGE_SIZE = 20;
       const PAGES_PER_BATCH = 3;
 
       const skip = Number(extra?.skip || 0);
-      const targetIndex = skip;     
-      const targetPage = Math.floor(targetIndex / WEBSITE_PAGE_SIZE) + 1;
+      const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
 
-      // Will page forward using blogger "older posts" / updated-max URLs
       let url = startUrl;
       let currentPage = 1;
       let allItems = [];
@@ -116,12 +103,10 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         Referer: `${base}/`,
       };
 
-      // Aadvance to the target page (best-effort)
       while (currentPage < targetPage && url) {
         const { data } = await axiosClient.get(url, { headers });
         const $ = cheerio.load(data);
 
-        // Blogger older link (sometimes present), else stop
         const older =
           $("a.blog-pager-older-link").attr("href") ||
           $("#Blog1_blog-pager-older-link").attr("href") ||
@@ -131,12 +116,10 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         currentPage++;
       }
 
-      // Fetch a few pages starting from targetPage
       for (let i = 0; i < PAGES_PER_BATCH && url; i++) {
         const { data } = await axiosClient.get(url, { headers });
         const $ = cheerio.load(data);
 
-        // Sunday cards are <article class="blog-post ..."> ... <a class="entry-image-wrap" title="...">
         const articles = $("article.blog-post").toArray();
 
         for (const el of articles) {
@@ -163,7 +146,6 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
           });
         }
 
-        // next page (updated-max / older)
         const older =
           $("a.blog-pager-older-link").attr("href") ||
           $("#Blog1_blog-pager-older-link").attr("href") ||
@@ -172,17 +154,9 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         url = older ? older : null;
       }
 
-      const uniq = [...new Map(allItems.map((x) => [x.id, x])).values()];
+      const uniq = uniqById(allItems);
 
-      return {
-        metas: uniq.map((item) => ({
-          id: item.id,
-          type: "series",
-          name: item.name,
-          poster: item.poster,
-          posterShape: "poster",
-        })),
-      };
+      return { metas: mapMetas(uniq, TYPE) };
     }
 
     // VIP / iDrama: normal paging
@@ -200,18 +174,10 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 
     const items = await siteEngine.getCatalogItems(id, site, url);
 
-    return {
-      metas: items.map((item) => ({
-        id: item.id,
-        type: "series",
-        name: item.name,
-        poster: item.poster,
-        posterShape: "poster",
-      })),
-    };
+    return { metas: mapMetas(items, TYPE) };
 
   } catch (e) {
-    console.error("catalog error:", e?.message || e);
+    console.error("catalog error:", e);
     return { metas: [] };
   }
 });
@@ -227,12 +193,12 @@ builder.defineMetaHandler(async ({ id }) => {
     const prefix = id.slice(0, firstColon);
     const encodedUrl = id.slice(firstColon + 1);
 
-    if (!sites[prefix]) return { meta: null };
+    const ctx = getSiteEngine(prefix);
+    if (!ctx) return { meta: null };
+
+    const { engine: siteEngine } = ctx;
 
     const seriesUrl = decodeURIComponent(encodedUrl);
-
-    const siteEngine = ENGINES[prefix];
-    if (!siteEngine) return { meta: null };
 
     const episodes = await siteEngine.getEpisodes(prefix, seriesUrl);
     if (!episodes.length) return { meta: null };
@@ -242,7 +208,7 @@ builder.defineMetaHandler(async ({ id }) => {
     return {
       meta: {
         id,
-        type: "series",
+        type: TYPE,
         name: first.title,
         poster: first.thumbnail,
         background: first.thumbnail,
@@ -273,7 +239,10 @@ builder.defineStreamHandler(async ({ id }) => {
       return { streams: [] };
     }
 
-    if (!sites[prefix]) return { streams: [] };
+    const ctx = getSiteEngine(prefix);
+    if (!ctx) return { streams: [] };
+
+    const { engine: siteEngine } = ctx;
 
     const epNum = Number(episode);
     if (!Number.isInteger(epNum) || epNum <= 0) {
@@ -281,9 +250,6 @@ builder.defineStreamHandler(async ({ id }) => {
     }
 
     const seriesUrl = decodeURIComponent(encodedUrl);
-
-    const siteEngine = ENGINES[prefix];
-    if (!siteEngine) return { streams: [] };
 
     const stream = await siteEngine.getStream(prefix, seriesUrl, epNum);
     if (!stream) return { streams: [] };

@@ -1,41 +1,32 @@
+const TYPE = "series";
+const EXTRA = ["search", "skip"];
+
+const sites = [
+  { id: "vip", name: "Phumikhmer" },
+  { id: "sunday", name: "SundayDrama" },
+  { id: "idrama", name: "iDramaHD" },
+  { id: "khmerave", name: "KhmerAve" },
+  { id: "merlkon", name: "Merlkon" },
+];
+
 module.exports = {
   id: "community.khmer.test",
-  version: "1.2.0-test",
+  version: "1.3.0-test",
   name: "KhmerDub Test",
   description: "Stream Experimental Build | Dev: TheDevilz.",
   logo: "https://raw.githubusercontent.com/konrepo/VIP/refs/heads/main/test.png",
+
   resources: ["catalog", "meta", "stream"],
-  types: ["series"],
-  catalogs: [
-    {
-      type: "series",
-      id: "vip",
-      name: "Phumikhmer (test)",
-      extraSupported: ["search", "skip"],
-    },
-    {
-      type: "series",
-      id: "sunday",
-      name: "SundayDrama (test)",
-      extraSupported: ["search", "skip"],
-    },	
-    {
-      type: "series",
-      id: "idrama",
-      name: "iDramaHD (test)",
-      extraSupported: ["search", "skip"],
-    },
-    {
-      type: "series",
-      id: "khmerave",
-      name: "KhmerAve (test)",
-      extraSupported: ["search", "skip"],
-    },
-    {
-      type: "series",
-      id: "merlkon",
-      name: "Merlkon (test)",
-      extraSupported: ["search", "skip"],
-    },
-  ],
+  types: [TYPE],
+
+  catalogs: sites.map(site => ({
+    type: TYPE,
+    id: site.id,
+    name: `${site.name} (test)`,
+    extraSupported: EXTRA
+  })),
+
+  behaviorHints: {
+    configurable: false
+  }
 };
