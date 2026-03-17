@@ -38,14 +38,12 @@ async function getCatalogItems(prefix, siteConfig, url) {
     const $ = cheerio.load(data);
     const items = [];
 
-    $("div.col-6.col-sm-4.thumbnail-container, div.card-content").each((_, el) => {
+    $(".card-content").each((_, el) => {
       const link = $(el).find("a").attr("href");
-      const title = cleanTitle($(el).find("h3").text());
+      const title = cleanTitle($(el).find("h3").first().text());
 
       const style =
-        $(el).find("div[style]").attr("style") ||
-        $(el).find(".card-content-image").attr("style") ||
-        "";
+        $(el).find(".card-content-image").attr("style") || "";
 
       const poster = posterFromStyle(style);
 

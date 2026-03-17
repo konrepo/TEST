@@ -59,24 +59,35 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       const PAGES_PER_BATCH = 3;
 
       const skip = Number(extra?.skip || 0);
-      const startPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
+      const startPage =
+        Math.floor(skip / (WEBSITE_PAGE_SIZE * PAGES_PER_BATCH)) *
+        PAGES_PER_BATCH +
+        1;
 
       const base = String(site.baseUrl || "").replace(/\/$/, "");
       const pages = [];
 
       for (let p = startPage; p < startPage + PAGES_PER_BATCH; p++) {
-        const url = p === 1
-          ? `${base}/`
-          : `${base}/page/${p}/`;
+        const url =
+          p === 1 ? `${base}/` : `${base}/page/${p}/`;
 
         pages.push(siteEngine.getCatalogItems(id, site, url));
       }
 
       const results = await Promise.all(pages);
       const allItems = results.flat();
+
+      if (!allItems.length) return { metas: [] };
+
       const uniq = uniqById(allItems);
 
-      return { metas: mapMetas(uniq, TYPE) };
+      return {
+        metas: mapMetas(
+          uniq.slice(0, WEBSITE_PAGE_SIZE * PAGES_PER_BATCH),
+          TYPE
+        )
+		cacheMaxAge: 3600
+      };
     }
 
     // SundayDrama (Blogger): search + paging

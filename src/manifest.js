@@ -1,5 +1,4 @@
 const TYPE = "series";
-const EXTRA = ["search", "skip"];
 
 const sites = [
   { id: "vip", name: "Phumikhmer" },
@@ -23,7 +22,10 @@ module.exports = {
     type: TYPE,
     id: site.id,
     name: `${site.name} (test)`,
-    extraSupported: EXTRA
+    extraSupported: [
+      { name: "search", isRequired: false },
+      { name: "skip", isRequired: false }
+    ]
   })),
 
   behaviorHints: {
