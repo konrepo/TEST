@@ -85,7 +85,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         metas: mapMetas(
           uniq.slice(0, WEBSITE_PAGE_SIZE * PAGES_PER_BATCH),
           TYPE
-        )
+        ),
 		cacheMaxAge: 3600
       };
     }
