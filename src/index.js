@@ -56,29 +56,51 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     // KhmerAve / Merlkon: paging
     if (id === "khmerave" || id === "merlkon") {
       const WEBSITE_PAGE_SIZE = site.pageSize || 18;
-      const PAGES_PER_BATCH = 1;
+      const PAGES_PER_BATCH = 6;
 
       const skip = Number(extra?.skip || 0);
-      const startPage =
+
+      // convert skip → website page
+      const page =
         Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
+
+      // align page to batch boundary (1–6, 7–12, 13–18, ...)
+      const startPage =
+        Math.floor((page - 1) / PAGES_PER_BATCH) *
+          PAGES_PER_BATCH +
+        1;
 
       console.log("CATALOG DEBUG:", {
         id,
         skip,
         WEBSITE_PAGE_SIZE,
+        PAGES_PER_BATCH,
+        page,
         startPage
       });
 
       const base = String(site.baseUrl || "").replace(/\/$/, "");
-      const url =
-        startPage === 1 ? `${base}/` : `${base}/page/${startPage}/`;
+      const pages = [];
 
-      const items = await siteEngine.getCatalogItems(id, site, url);
+      for (let p = startPage; p < startPage + PAGES_PER_BATCH; p++) {
+        const url =
+          p === 1 ? `${base}/` : `${base}/page/${p}/`;
 
-      if (!items.length) return { metas: [] };
+        pages.push(siteEngine.getCatalogItems(id, site, url));
+      }
+
+      const results = await Promise.all(pages);
+      const allItems = results.flat();
+
+      if (!allItems.length) return { metas: [] };
+
+      const uniq = uniqById(allItems);
 
       return {
-        metas: mapMetas(items, TYPE),
+        metas: mapMetas(
+          uniq.slice(0, WEBSITE_PAGE_SIZE * PAGES_PER_BATCH),
+          TYPE
+        ),
         cacheMaxAge: 3600
       };
     }
