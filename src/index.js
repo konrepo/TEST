@@ -57,16 +57,12 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     if (id === "khmerave" || id === "merlkon") {
       const WEBSITE_PAGE_SIZE = site.pageSize || 18;
       const PAGES_PER_BATCH = 6;
+      const SKIP_STEP = 300;
 
       const skip = Number(extra?.skip || 0);
 
-      // convert skip → website page
-      const page =
-        Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
-
-      // align page to batch boundary (1–6, 7–12, 13–18, ...)
       const startPage =
-        Math.floor((page - 1) / PAGES_PER_BATCH) *
+        Math.floor(skip / SKIP_STEP) *
           PAGES_PER_BATCH +
         1;
 
@@ -75,7 +71,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         skip,
         WEBSITE_PAGE_SIZE,
         PAGES_PER_BATCH,
-        page,
+        SKIP_STEP,
         startPage
       });
 
