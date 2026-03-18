@@ -207,9 +207,8 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     }
 
     // VIP / iDrama: normal paging
-    const pageSize = site.pageSize || 30;
     const skip = Number(extra?.skip || 0);
-    const page = Math.floor(skip / pageSize) + 1;
+    const page = Math.floor(skip / 30) + 1;
 
     const base = String(site.baseUrl || "").replace(/\/$/, "");
 
