@@ -209,11 +209,12 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     // VIP / iDrama: normal paging
     const WEBSITE_PAGE_SIZE = site.pageSize || 30;
     const PAGES_PER_BATCH = 2;
+    const SKIP_STEP = 100; 
 
     const skip = Number(extra?.skip || 0);
 
     const startPage =
-      Math.floor(skip / 100) *
+      Math.floor(skip / SKIP_STEP) *
         PAGES_PER_BATCH +
       1;
 
