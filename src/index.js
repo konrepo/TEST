@@ -214,7 +214,17 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 
     // Direct mapping: skip → page
     const page = Math.floor(skip / pageSize) + 1;
+	  
+    console.log("CATALOG DEBUG:", {
+        id,
+        skip,
+        WEBSITE_PAGE_SIZE,
+        PAGES_PER_BATCH,
+        SKIP_STEP,
+        startPage
+    });
 
+	  
     const url = extra?.search
       ? `${base}/?s=${encodeURIComponent(extra.search)}`
       : page === 1
