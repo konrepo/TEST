@@ -207,22 +207,42 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     }
 
     // VIP / iDrama: normal paging
+    const WEBSITE_PAGE_SIZE = site.pageSize || 30;
+    const PAGES_PER_BATCH = 2;
+
     const skip = Number(extra?.skip || 0);
-    const page = Math.floor(skip / 30) + 1;
+
+    const startPage =
+      Math.floor(skip / 100) *
+        PAGES_PER_BATCH +
+      1;
 
     const base = String(site.baseUrl || "").replace(/\/$/, "");
+    const pages = [];
 
-    const url = extra?.search
-      ? `${base}/?s=${encodeURIComponent(extra.search)}`
-      : page === 1
-        ? `${base}/`
-        : `${base}/page/${page}/`;
+    for (let p = startPage; p < startPage + PAGES_PER_BATCH; p++) {
+      const url =
+        p === 1 ? `${base}/` : `${base}/page/${p}/`;
 
-    const items = await siteEngine.getCatalogItems(id, site, url);
+      pages.push(siteEngine.getCatalogItems(id, site, url));
+    }
 
-    const fixed = applyMetaId(items, id);
+    const results = await Promise.all(pages);
+    const allItems = results.flat();
 
-    const result = { metas: mapMetas(fixed, TYPE) };
+    if (!allItems.length) return { metas: [] };
+
+    const uniq = uniqById(allItems);
+    const fixed = applyMetaId(uniq, id);
+
+    const result = {
+      metas: mapMetas(
+        fixed.slice(0, WEBSITE_PAGE_SIZE * PAGES_PER_BATCH),
+        TYPE
+      ),
+      cacheMaxAge: 3600
+    };
+
     CATALOG_CACHE.set(cacheKey, result);
     return result;
 
