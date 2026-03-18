@@ -150,7 +150,7 @@ async function getEpisodes(prefix, seriesUrl) {
     }
 
     // Deduplicate + sort for stability
-    const uniqueUrls = [...new Set(urls)].sort();
+    const uniqueUrls = [...new Set(urls)];
     if (!uniqueUrls.length) return [];
 
     const $ = cheerio.load(data);	
@@ -192,17 +192,30 @@ async function getEpisodes(prefix, seriesUrl) {
   const maxEp = POST_INFO.get(postId)?.maxEp || null;
 
   // Deduplicate
-  let urls = [...new Set(detail.urls)].sort();
+  let urls;
 
+  if (prefix === "vip" || prefix === "idrama") {
+    // Blogger → keep original order
+    urls = [...new Set(detail.urls)];
+  } else {
+    // KhmerAve / others → need sorting
+    urls = [...new Set(detail.urls)].sort();
+  }
+	
   // Apply max episode limit
   if (maxEp && urls.length > maxEp) {
     urls = urls.slice(0, maxEp);
   }
 
   return urls.map((url, index) => {
-    const m = url.match(/-(\d+)/);
-    const epNum = m ? parseInt(m[1], 10) : index + 1;
-
+    const m = url.match(/-(\d+)(?:\D|$)/);
+    const parsed = m ? parseInt(m[1], 10) : null;
+	  
+    const epNum =
+      Number.isInteger(parsed) && parsed > 0 && parsed < 1000
+        ? parsed
+        : index + 1;
+	  
     return {
       id: epNum,
       url,

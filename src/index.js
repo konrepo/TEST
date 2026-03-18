@@ -243,12 +243,18 @@ builder.defineMetaHandler(async ({ id }) => {
     const ctx = getSiteEngine(prefix);
     if (!ctx) return { meta: null };
 
-    const { engine: siteEngine } = ctx;
+    const { site, engine: siteEngine } = ctx;
 
     const seriesUrl = URL_CACHE.get(id);
     if (!seriesUrl) return { meta: null };
 
-    let episodes = await siteEngine.getEpisodes(prefix, seriesUrl);
+    let episodes;
+
+    if (prefix === "khmerave" || prefix === "merlkon") {
+      episodes = await khmerave.getEpisodes(prefix, seriesUrl);
+    } else {
+      episodes = await siteEngine.getEpisodes(prefix, seriesUrl);
+    }
     if (!episodes.length) return { meta: null };
 
     // normalize order
@@ -311,7 +317,7 @@ builder.defineStreamHandler(async ({ id }) => {
     const ctx = getSiteEngine(prefix);
     if (!ctx) return { streams: [] };
 
-    const { engine: siteEngine } = ctx;
+    const { site, engine: siteEngine } = ctx;
 
     const seriesUrl = URL_CACHE.get(metaId);
     if (!seriesUrl) return { streams: [] };
@@ -322,7 +328,12 @@ builder.defineStreamHandler(async ({ id }) => {
     let episodes = EP_CACHE.get(metaId);
 
     if (!episodes) {
-      episodes = await siteEngine.getEpisodes(prefix, seriesUrl);
+      if (prefix === "khmerave" || prefix === "merlkon") {
+        episodes = await khmerave.getEpisodes(prefix, seriesUrl);
+      } else {
+        episodes = await siteEngine.getEpisodes(prefix, seriesUrl);
+      }
+
       if (!episodes.length) return { streams: [] };
 
       // normalize
@@ -338,11 +349,21 @@ builder.defineStreamHandler(async ({ id }) => {
       EP_CACHE.set(metaId, episodes);
     }
 
-    const ep = episodes[epNum - 1];
+    let ep = episodes.find(e => e.episode === epNum);
+    if (!ep && epNum - 1 >= 0 && epNum - 1 < episodes.length) {
+	  ep = episodes[epNum - 1];
+    }
     if (!ep) return { streams: [] };
 
     // Use episode URL directly
-    const stream = await siteEngine.getStream(prefix, ep.url, epNum);
+    let stream;
+
+    if (prefix === "khmerave" || prefix === "merlkon") {
+      stream = await khmerave.getStream(prefix, ep.url, ep.episode);
+    } else {
+      stream = await siteEngine.getStream(prefix, ep.url, epNum);
+    }
+
     if (!stream) return { streams: [] };
 
     return { streams: [stream] };
