@@ -149,22 +149,35 @@ async function getEpisodes(prefix, seriesUrl) {
       urls.push(match[1]);
     }
 
+    // Deduplicate + sort for stability
+    const uniqueUrls = [...new Set(urls)].sort();
+    if (!uniqueUrls.length) return [];
+
     const $ = cheerio.load(data);	
     const pagePoster =
       $("meta[property='og:image']").attr("content") ||
       $("link[rel='image_src']").attr("href") ||
       "";
 
-    const normalizedPoster = normalizePoster(pagePoster);
+    const normalizedPoster = normalizePoster(pagePoster || "");
 
-    return urls.map((url, index) => ({
-      id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
-      title: `Episode ${index + 1}`,
-      season: 1,
-      episode: index + 1,
-      thumbnail: normalizedPoster,
-      released: new Date().toISOString(),
-    }));
+    return uniqueUrls.map((url, index) => {
+      const m = url.match(/-(\d+)/);
+      const epNum = m ? parseInt(m[1], 10) : index + 1;
+
+      return {
+        id: epNum,
+        url,
+        title: `Episode ${epNum}`,
+        season: 1,
+        episode: epNum,
+        thumbnail: normalizedPoster,
+        released: new Date().toISOString(),
+        behaviorHints: {
+          group: `${prefix}:${encodeURIComponent(seriesUrl)}`
+        }
+      };
+    });
   }
 
   if (!postId) {
@@ -172,27 +185,37 @@ async function getEpisodes(prefix, seriesUrl) {
   }
 
   const detail = await getStreamDetail(postId);
-
   if (!detail) {
     return [];
   }
 
   const maxEp = POST_INFO.get(postId)?.maxEp || null;
 
-  let urls = [...new Set(detail.urls)];
+  // Deduplicate
+  let urls = [...new Set(detail.urls)].sort();
 
+  // Apply max episode limit
   if (maxEp && urls.length > maxEp) {
     urls = urls.slice(0, maxEp);
   }
 
-  return urls.map((url, index) => ({
-    id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
-    title: detail.title,
-    season: 1,
-    episode: index + 1,
-    thumbnail: detail.thumbnail,
-    released: new Date().toISOString(),
-  }));
+  return urls.map((url, index) => {
+    const m = url.match(/-(\d+)/);
+    const epNum = m ? parseInt(m[1], 10) : index + 1;
+
+    return {
+      id: epNum,
+      url,
+      title: detail.title,
+      season: 1,
+      episode: epNum,
+      thumbnail: detail.thumbnail,
+      released: new Date().toISOString(),
+      behaviorHints: {
+        group: `${prefix}:${encodeURIComponent(seriesUrl)}`
+      }
+    };
+  });
 }
 
 /* =========================
@@ -240,7 +263,7 @@ async function resolveOkEmbed(embedUrl) {
     .replace(/\\u0026/g, "&")
     .replace(/\\\//g, "/")
     .replace(/&amp;/g, "&")
-    .replace(/\\&quot;.*/g, ""); // safety: cut anything after if it appears
+    .replace(/\\&quot;.*/g, ""); 
 }
 
 
@@ -269,15 +292,13 @@ function buildStream(url, episode) {
 /* =========================
    STREAM
 ========================= */
-async function getStream(prefix, seriesUrl, episode) {
-  const postId = await getPostId(seriesUrl);
-  // Sunday fallback streaming
-  if (prefix === "sunday" && !postId) {
-
-    const { data } = await axiosClient.get(seriesUrl, {
+async function getStream(prefix, episodeUrl, episode) {
+  // Sunday fallback
+  if (prefix === "sunday") {
+    const { data } = await axiosClient.get(episodeUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0",
-        Referer: seriesUrl
+        Referer: episodeUrl
       }
     });
 
@@ -288,34 +309,21 @@ async function getStream(prefix, seriesUrl, episode) {
     return buildStream(url, episode);
   }
 
-  if (!postId) return null;
+  // For VIP / iDrama: episodeUrl 
+  let url = episodeUrl;
 
-  const detail = await getStreamDetail(postId);
-  if (!detail) {
-	return null;
-  }
-
-  let url = detail.urls[episode - 1];
-  if (!url) {
-	return null;
-  }
-
-  // Resolve player.php first
+  // Resolve player.php
   if (url.includes("player.php")) {
-	  const resolved = await resolvePlayerUrl(url);
-	  if (!resolved) {
-		return null;
-	  }
-	  url = resolved;
+    const resolved = await resolvePlayerUrl(url);
+    if (!resolved) return null;
+    url = resolved;
   }
 
-  // Resolve OK embed page
+  // Resolve OK embed
   if (url.includes("ok.ru/videoembed/")) {
-	  const resolved = await resolveOkEmbed(url);
-	  if (!resolved) {
-		return null;
-	  }
-	  url = resolved;
+    const resolved = await resolveOkEmbed(url);
+    if (!resolved) return null;
+    url = resolved;
   }
 
   return buildStream(url, episode);
@@ -360,7 +368,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
           const normalizedPoster = normalizePoster(poster);
 
           allItems.push({
-            id: `${prefix}:${encodeURIComponent(link)}`,
+            id: link,
             name: title,
             poster: normalizedPoster,
           });
@@ -396,7 +404,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
       const normalizedPoster = normalizePoster(poster);
 
       return {
-        id: `${prefix}:${encodeURIComponent(link)}`,
+        id: link,
         name: title,
         poster: normalizedPoster,
       };
