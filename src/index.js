@@ -131,7 +131,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         : `${base}/?max-results=20&m=1`;
 
       const WEBSITE_PAGE_SIZE = 20;
-      const PAGES_PER_BATCH = 1;
+      const PAGES_PER_BATCH = 2;
 
       const skip = Number(extra?.skip || 0);
       const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
@@ -201,7 +201,12 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       const uniq = uniqById(allItems);
       const fixed = applyMetaId(uniq, id);
 
-      const result = { metas: mapMetas(fixed, TYPE) };
+      const result = { 
+		metas: mapMetas(
+		  fixed.slice(0, WEBSITE_PAGE_SIZE),
+		  TYPE
+		)
+      }
       CATALOG_CACHE.set(cacheKey, result);
       return result;
     }
