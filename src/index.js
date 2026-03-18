@@ -207,38 +207,49 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     }
 
     // VIP / iDrama: normal paging
-    const base = String(site.baseUrl || "").replace(/\/$/, "");
-    const pageSize = site.pageSize || 30;
+    const WEBSITE_PAGE_SIZE = site.pageSize || 30;
+    const PAGES_PER_BATCH = 2;
+    const SKIP_STEP = 100
 
     const skip = Number(extra?.skip || 0);
 
-    // Direct mapping: skip → page
-    const page = Math.floor(skip / pageSize) + 1;
-	  
+    const startPage =
+      Math.floor(skip / SKIP_STEP) *
+        PAGES_PER_BATCH +
+      1;
+
     console.log("CATALOG DEBUG:", {
-        id,
-        skip,
-        WEBSITE_PAGE_SIZE,
-        PAGES_PER_BATCH,
-        SKIP_STEP,
-        startPage
+      id,
+      skip,
+      WEBSITE_PAGE_SIZE,
+      PAGES_PER_BATCH,
+      SKIP_STEP,
+      startPage
     });
 
-	  
-    const url = extra?.search
-      ? `${base}/?s=${encodeURIComponent(extra.search)}`
-      : page === 1
-        ? `${base}/`
-        : `${base}/page/${page}/`;
+    const base = String(site.baseUrl || "").replace(/\/$/, "");
+    const pages = [];
 
-    const items = await siteEngine.getCatalogItems(id, site, url);
+    for (let p = startPage; p < startPage + PAGES_PER_BATCH; p++) {
+      const url =
+        p === 1 ? `${base}/` : `${base}/page/${p}/`;
 
-    if (!items.length) return { metas: [] };
+      pages.push(siteEngine.getCatalogItems(id, site, url));
+    }
 
-    const fixed = applyMetaId(items, id);
+    const results = await Promise.all(pages);
+    const allItems = results.flat();
+
+    if (!allItems.length) return { metas: [] };
+
+    const uniq = uniqById(allItems);
+    const fixed = applyMetaId(uniq, id);
 
     const result = {
-      metas: mapMetas(fixed, TYPE),
+      metas: mapMetas(
+        fixed.slice(0, WEBSITE_PAGE_SIZE * PAGES_PER_BATCH),
+        TYPE
+      ),
       cacheMaxAge: 3600
     };
 
