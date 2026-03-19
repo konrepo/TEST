@@ -136,6 +136,18 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       const skip = Number(extra?.skip || 0);
       const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
 
+      // DEBUG 
+      console.log("SUNDAY DEBUG:", {
+        skip,
+        targetPage
+      });
+
+      // FIX overlap issue (page 2 only)
+      let adjustedPage = targetPage;
+      if (adjustedPage === 2) {
+        adjustedPage = 3;
+      }
+
       let url = startUrl;
       let currentPage = 1;
       let allItems = [];
@@ -144,10 +156,11 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         "User-Agent":
           "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36",
         Referer: `${base}/`,
-		Accept: "text/html"
+        Accept: "text/html"
       };
 
-      while (currentPage < targetPage && url) {
+      // walk pages
+      while (currentPage < adjustedPage && url) {
         const { data } = await axiosClient.get(url, { headers });
         const $ = cheerio.load(data);
 
@@ -160,6 +173,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         currentPage++;
       }
 
+      // fetch batch
       for (let i = 0; i < PAGES_PER_BATCH && url; i++) {
         const { data } = await axiosClient.get(url, { headers });
         const $ = cheerio.load(data);
@@ -170,7 +184,9 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
           const $el = $(el);
 
           const aImg = $el.find("a.entry-image-wrap").first();
-          const link = aImg.attr("href") || $el.find("h2.entry-title a").attr("href") || "";
+          const link = aImg.attr("href") ||
+                       $el.find("h2.entry-title a").attr("href") || "";
+
           const title =
             (aImg.attr("title") || "").trim() ||
             ($el.find("h2.entry-title a").first().text() || "").trim();
@@ -180,8 +196,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
           const img =
             $el.find("img.entry-thumb").attr("src") ||
             aImg.find("span[data-src]").attr("data-src") ||
-            aImg.find("img").attr("src") ||
-            "";
+            aImg.find("img").attr("src") || "";
 
           allItems.push({
             id: link,
@@ -198,15 +213,17 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         url = older ? older : null;
       }
 
+      // dedupe + slice
       const uniq = uniqById(allItems);
       const fixed = applyMetaId(uniq, id);
 
-      const result = { 
-		metas: mapMetas(
-		  fixed.slice(0, WEBSITE_PAGE_SIZE),
-		  TYPE
-		)
-      }
+      const result = {
+        metas: mapMetas(
+          fixed.slice(0, WEBSITE_PAGE_SIZE),
+          TYPE
+        )
+      };
+
       CATALOG_CACHE.set(cacheKey, result);
       return result;
     }
