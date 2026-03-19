@@ -90,22 +90,27 @@ async function getEpisodes(prefix, seriesUrl) {
     // EPISODE EXTRACTION
     // =========================
     $("a[href]").each((_, el) => {
-      const link = $(el).attr("href");
+      let link = $(el).attr("href");
       if (!link) return;
 
-      // skip junk
+      const cleanLink = link.replace(/\/$/, "");
+      const cleanSeries = seriesUrl.replace(/\/$/, "");
+
+      // ONLY allow valid episode links
+      if (!cleanLink.includes("/videos/") && cleanLink !== cleanSeries) return;
+
       if (link.includes("?post_type=videos")) return;
 
       let epNumber = null;
 
-      // normal episode links
+      // normal episodes
       const m = link.match(/-(\d+)(?:\/|$)/);
       if (m) {
         epNumber = parseInt(m[1], 10);
       }
 
-      // fallback for Episode 1 (album link)
-      if (!epNumber && link === seriesUrl) {
+      // fallback for episode 1
+      if (!epNumber && cleanLink === cleanSeries) {
         epNumber = 1;
       }
 
