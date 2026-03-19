@@ -22,7 +22,9 @@ const axiosClient = axios.create({
 axiosClient.interceptors.response.use(
   res => res,
   err => {
-    console.error("HTTP Error:", err.response?.status, err.config?.url);
+    if (err.response && err.response.status !== 404) {
+      console.error("HTTP Error:", err.response.status, err.config?.url);
+  }
     return Promise.reject(err);
   }
 );
