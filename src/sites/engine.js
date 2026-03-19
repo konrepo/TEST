@@ -136,7 +136,7 @@ async function getStreamDetail(postId) {
 async function getEpisodes(prefix, seriesUrl) {
   const postId = await getPostId(seriesUrl);
 
-  // Sunday playlist
+  // SundayDrama playlist
   if (!postId && prefix === "sunday") {  
     const { data } = await axiosClient.get(seriesUrl);
 
@@ -195,7 +195,7 @@ async function getEpisodes(prefix, seriesUrl) {
   let urls;
 
   if (prefix === "vip" || prefix === "idrama") {
-    // Blogger → keep original order
+    // Blogger - keep original order
     urls = [...new Set(detail.urls)];
   } else {
     // KhmerAve / others → need sorting
@@ -318,18 +318,9 @@ function buildStream(url, episode) {
 ========================= */
 async function getStream(prefix, episodeUrl, episode) {
 
-  console.log("STREAM DEBUG:", {
-    prefix,
-    episode,
-    episodeUrl
-  });
-
-  // Sunday → already final URL (no fetch needed)
+  // Sunday URL
   if (prefix === "sunday") {
     const stream = buildStream(episodeUrl, episode);
-
-    console.log("FINAL STREAM OBJECT:", JSON.stringify(stream, null, 2));
-
     return stream;
   }
 
@@ -350,12 +341,7 @@ async function getStream(prefix, episodeUrl, episode) {
     url = resolved;
   }
 
-  console.log("FINAL STREAM URL:", url);
-
   const stream = buildStream(url, episode);
-
-  console.log("FINAL STREAM OBJECT:", JSON.stringify(stream, null, 2));
-
   return stream;
 }
 
