@@ -197,6 +197,10 @@ async function getEpisodes(prefix, seriesUrl) {
   if (prefix === "vip" || prefix === "idrama") {
     // Blogger - keep original order
     urls = [...new Set(detail.urls)];
+    // Limit by detected max episode
+    if (maxEp && urls.length > maxEp) {
+      urls = urls.slice(0, maxEp);
+    }	
   } else {
     // KhmerAve / others → need sorting
     urls = [...new Set(detail.urls)].sort();
@@ -212,7 +216,7 @@ async function getEpisodes(prefix, seriesUrl) {
     const parsed = m ? parseInt(m[1], 10) : null;
 	  
     const epNum =
-      Number.isInteger(parsed) && parsed > 0 && parsed < 1000
+      Number.isInteger(parsed) && parsed > 0 && parsed <= (maxEp || 1000)
         ? parsed
         : index + 1;
 	  
@@ -228,7 +232,7 @@ async function getEpisodes(prefix, seriesUrl) {
         group: `${prefix}:${encodeURIComponent(seriesUrl)}`
       }
     };
-  });
+  }).slice(0, maxEp || urls.length);
 }
 
 /* =========================
