@@ -126,36 +126,20 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     if (id === "sunday") {
       const base = String(site.baseUrl || "").replace(/\/$/, "");
 
-      const startUrl = extra?.search
+      let url = extra?.search
         ? `${base}/search?q=${encodeURIComponent(extra.search)}&max-results=20&m=1`
         : `${base}/?max-results=20&m=1`;
 
-      const WEBSITE_PAGE_SIZE = 100;
-      const PAGES_PER_BATCH = 5;
-      const SKIP_STEP = 100;
-
       const skip = Number(extra?.skip || 0);
+      const PAGE_STEP = 20;
 
-      const startPage =
-        Math.floor(skip / SKIP_STEP) *
-          PAGES_PER_BATCH +
-        1;
+      // how many pages to skip
+      const steps = Math.floor(skip / PAGE_STEP);
 
       console.log("SUNDAY DEBUG:", {
-        id,
         skip,
-        WEBSITE_PAGE_SIZE,
-        PAGES_PER_BATCH,
-        SKIP_STEP,
-        startPage
+        steps
       });
-
-      let url = startPage === 1
-        ? startUrl
-        : `${base}/search?updated-max=&max-results=20&start=${startPage}`;
-
-      let currentPage = startPage;
-      let allItems = [];
 
       const headers = {
         "User-Agent":
@@ -164,26 +148,23 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         Accept: "text/html"
       };
 
-      // walk forward until requested page
-      if (startPage > 1) {
-        url = startUrl;
-        currentPage = 1;
+      // walk pages using "older" links
+      for (let i = 0; i < steps && url; i++) {
+        const { data } = await axiosClient.get(url, { headers });
+        const $ = cheerio.load(data);
 
-        while (currentPage < startPage && url) {
-          const { data } = await axiosClient.get(url, { headers });
-          const $ = cheerio.load(data);
+        const older =
+          $("a.blog-pager-older-link").attr("href") ||
+          $("#Blog1_blog-pager-older-link").attr("href") ||
+          "";
 
-          const older =
-            $("a.blog-pager-older-link").attr("href") ||
-            $("#Blog1_blog-pager-older-link").attr("href") ||
-            "";
-
-          url = older ? older : null;
-          currentPage++;
-        }
+        url = older ? older : null;
       }
 
-      for (let i = 0; i < PAGES_PER_BATCH && url; i++) {
+      // now fetch current page
+      let allItems = [];
+
+      if (url) {
         const { data } = await axiosClient.get(url, { headers });
         const $ = cheerio.load(data);
 
@@ -216,39 +197,13 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
             poster: normalizePoster(img),
           });
         }
-
-        const older =
-          $("a.blog-pager-older-link").attr("href") ||
-          $("#Blog1_blog-pager-older-link").attr("href") ||
-          "";
-
-        url = older ? older : null;
       }
 
       const uniq = uniqById(allItems);
       const fixed = applyMetaId(uniq, id);
 
       const result = {
-        metas: mapMetas(
-          fixed.slice(0, WEBSITE_PAGE_SIZE),
-          TYPE
-        ),
-        cacheMaxAge: 3600
-      };
-
-      CATALOG_CACHE.set(cacheKey, result);
-      return result;
-    }
-
-      // dedupe + slice
-      const uniq = uniqById(allItems);
-      const fixed = applyMetaId(uniq, id);
-
-      const result = {
-        metas: mapMetas(
-          fixed.slice(0, WEBSITE_PAGE_SIZE),
-          TYPE
-        )
+        metas: mapMetas(fixed, TYPE)
       };
 
       CATALOG_CACHE.set(cacheKey, result);
