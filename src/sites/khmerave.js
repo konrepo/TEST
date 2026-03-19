@@ -85,19 +85,21 @@ async function getEpisodes(prefix, seriesUrl) {
 
     let eps = [];
 
-    $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]").each(
-      (_, el) => {
-        const link = $(el).attr("href");
-        if (!link) return;
-        if (link.includes("?post_type=videos")) return;
+    // Fixed loop
+    $("a[href]").each((_, el) => {
+      const link = $(el).attr("href");
+      if (!link) return;
 
-        // Extract episode number
-        const m = link.match(/-(\d+)/);
-        const epNumber = m ? parseInt(m[1], 10) : 1;
+      if (!link.includes("/videos/")) return;
+      if (link.includes("?post_type=videos")) return;
 
-        eps.push({ link, epNumber });
-      }
-    );
+      const m = link.match(/-(\d+)(?:\/|$)/);
+      if (!m) return;
+
+      const epNumber = parseInt(m[1], 10);
+
+      eps.push({ link, epNumber });
+    });
 
     if (!eps.length) return [];
 
@@ -109,7 +111,7 @@ async function getEpisodes(prefix, seriesUrl) {
 
     return eps.map((e) => ({
       id: e.epNumber,
-      url: e.link, 
+      url: e.link,
       title: pageTitle,
       season: 1,
       episode: e.epNumber,
