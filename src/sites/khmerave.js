@@ -69,7 +69,12 @@ async function getCatalogItems(prefix, siteConfig, url) {
 async function getEpisodes(prefix, seriesUrl) {
   try {
     const { data } = await axios.get(seriesUrl, {
-      headers: { "User-Agent": UA_MOB, Referer: referer(prefix) },
+      headers: { 
+	    "User-Agent": prefix === "khmerave" ? UA_WIN : UA_MOB,
+		Referer: referer(prefix),
+		"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+		"Accept-Language": "en-US,en;q=0.9"
+      },
       timeout: 15000,
     });
 
@@ -240,7 +245,10 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
 async function getStream(prefix, episodeUrl, episode) {
   try {
     const epRes = await axios.get(episodeUrl, {
-      headers: { "User-Agent": UA_MOB, Referer: referer(prefix) },
+      headers: { 
+	    "User-Agent": prefix === "khmerave" ? UA_WIN : UA_MOB,
+	    Referer: referer(prefix),
+	  },
       timeout: 15000,
     });
 
