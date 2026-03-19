@@ -314,7 +314,7 @@ function buildStream(url, episode) {
       })
     }
   };
-}}
+}
 
 /* =========================
    STREAM
