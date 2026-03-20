@@ -9,25 +9,7 @@ const axiosClient = require("./utils/fetch");
 const cheerio = require("cheerio");
 const { normalizePoster, mapMetas, uniqById } = require("./utils/helpers");
 
-const { makeMetaId } = require("./utils/hash");
-const { URL_CACHE, EP_CACHE, CATALOG_CACHE } = require("./utils/cache");
-
-function applyMetaId(items, prefix) {
-  return items
-    .map((item) => {
-      const url = item.id || item.url;
-      if (typeof url !== "string" || !url.trim()) return null;
-
-      const metaId = makeMetaId(prefix, url);
-      URL_CACHE.set(metaId, url);
-
-      return {
-        ...item,
-        id: metaId,
-      };
-    })
-    .filter(Boolean);
-}
+const { EP_CACHE, CATALOG_CACHE } = require("./utils/cache");
 
 const TYPE = "series";
 
@@ -38,6 +20,42 @@ const ENGINES = {
   khmerave,
   merlkon: khmerave,
 };
+
+function encodeMetaId(prefix, url) {
+  const encoded = Buffer.from(String(url).trim(), "utf8").toString("base64url");
+  return `${prefix}:${encoded}`;
+}
+
+function decodeMetaId(id) {
+  const idx = String(id || "").indexOf(":");
+  if (idx === -1) return null;
+
+  const prefix = id.slice(0, idx);
+  const encoded = id.slice(idx + 1);
+
+  try {
+    const url = Buffer.from(encoded, "base64url").toString("utf8").trim();
+    if (!url) return null;
+
+    return { prefix, url };
+  } catch {
+    return null;
+  }
+}
+
+function applyMetaId(items, prefix) {
+  return items
+    .map((item) => {
+      const url = item.id || item.url;
+      if (typeof url !== "string" || !url.trim()) return null;
+
+      return {
+        ...item,
+        id: encodeMetaId(prefix, url),
+      };
+    })
+    .filter(Boolean);
+}
 
 function getSiteEngine(id) {
   const site = sites[id];
@@ -277,14 +295,18 @@ builder.defineMetaHandler(async ({ id }) => {
   try {
     console.log("[META REQUEST]", { id });
 
-    const prefix = id.split(":")[0];
+    const decoded = decodeMetaId(id);
+    if (!decoded) {
+      console.error("[META decode failed]", { id });
+      return { meta: null };
+    }
+
+    const { prefix, url: seriesUrl } = decoded;
+
     const ctx = getSiteEngine(prefix);
     if (!ctx) return { meta: null };
 
     const { engine: siteEngine } = ctx;
-
-    const seriesUrl = URL_CACHE.get(id);
-    if (!seriesUrl) return { meta: null };
 
     let episodes;
 
@@ -296,6 +318,7 @@ builder.defineMetaHandler(async ({ id }) => {
 
     if (!episodes.length) return { meta: null };
 
+    // normalize order
     if (
       episodes.length > 1 &&
       Number.isFinite(episodes[0]?.episode) &&
@@ -305,6 +328,7 @@ builder.defineMetaHandler(async ({ id }) => {
       episodes = episodes.reverse();
     }
 
+    // cache normalized episodes by meta id
     EP_CACHE.set(id, episodes);
 
     const first = episodes[0];
@@ -317,8 +341,7 @@ builder.defineMetaHandler(async ({ id }) => {
           .replace(/\[.*?\]/g, "")
           .replace(/-\s*$/, "")
           .trim(),
-        description: (first.title || "KhmerDub")
-          .replace(/\[.*?\]/g, ""),
+        description: (first.title || "KhmerDub").replace(/\[.*?\]/g, ""),
         poster: first.thumbnail,
         background: first.thumbnail,
         videos: episodes.map((ep) => ({
@@ -348,26 +371,31 @@ builder.defineStreamHandler(async ({ id }) => {
   try {
     console.log("[STREAM REQUEST]", { id });
 
-    const parts = id.split(":");
-    if (parts.length < 2) return { streams: [] };
+    const lastColon = String(id || "").lastIndexOf(":");
+    if (lastColon === -1) return { streams: [] };
 
-    const episode = parts.pop();
-    const metaId = parts.join(":");
+    const metaId = id.slice(0, lastColon);
+    const episode = id.slice(lastColon + 1);
 
     const epNum = Number(episode);
     if (!Number.isInteger(epNum) || epNum <= 0) {
       return { streams: [] };
     }
 
-    const prefix = metaId.split(":")[0];
+    const decoded = decodeMetaId(metaId);
+    if (!decoded) {
+      console.error("[STREAM decode failed]", { id, metaId });
+      return { streams: [] };
+    }
+
+    const { prefix, url: seriesUrl } = decoded;
+
     const ctx = getSiteEngine(prefix);
     if (!ctx) return { streams: [] };
 
     const { engine: siteEngine } = ctx;
 
-    const seriesUrl = URL_CACHE.get(metaId);
-    if (!seriesUrl) return { streams: [] };
-
+    // use cache first
     let episodes = EP_CACHE.get(metaId);
 
     if (!episodes) {
@@ -379,6 +407,7 @@ builder.defineStreamHandler(async ({ id }) => {
 
       if (!episodes.length) return { streams: [] };
 
+      // normalize
       if (
         episodes.length > 1 &&
         Number.isFinite(episodes[0]?.episode) &&
