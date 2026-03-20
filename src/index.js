@@ -441,17 +441,8 @@ builder.defineStreamHandler(async ({ id }) => {
 /* =========================
    START SERVER
 ========================= */
-const originalHandler = builder.getInterface();
-
-const server = serveHTTP(originalHandler, {
+serveHTTP(builder.getInterface(), {
   port: process.env.PORT || 7000,
-});
-
-server.on("request", (req, res) => {
-  if (req.method === "HEAD") {
-    res.writeHead(200);
-    return res.end();
-  }
 });
 
 console.log("KhmerDub Addon running on port", process.env.PORT || 7000);
