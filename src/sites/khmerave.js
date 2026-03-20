@@ -71,6 +71,9 @@ async function getCatalogItems(prefix, siteConfig, url) {
     const $ = cheerio.load(data);
     const items = [];
 
+    console.log(`[${prefix}] CATALOG URL:`, url);
+    console.log(`[${prefix}] CATALOG CARDS:`, $(".card-content").length);
+
     $(".card-content").each((_, el) => {
       const link = $(el).find("a").attr("href");
       const title = cleanTitle($(el).find("h3").first().text());
@@ -86,9 +89,10 @@ async function getCatalogItems(prefix, siteConfig, url) {
       });
     });
 
+    console.log(`[${prefix}] CATALOG ITEMS:`, items.length);
     return items;
   } catch (err) {
-    console.error("khmerave catalog error:", err.message);
+    console.error(`[${prefix}] catalog error:`, err.message);
     return [];
   }
 }
@@ -110,12 +114,13 @@ async function getEpisodes(prefix, seriesUrl) {
 
     const $ = cheerio.load(data);
     const pageTitle = $("h1").first().text().trim() || seriesUrl;
-	
-    console.log("KHMERAVE PREFIX:", prefix);
-    console.log("KHMERAVE UA:", getSiteUA(prefix));
-    console.log("KHMERAVE TITLE:", pageTitle);
-    console.log("KHMERAVE ROWS:", $("#latest-videos tbody tr").length);
-    console.log("KHMERAVE ANCHORS:", $("a[href]").length);	
+
+    console.log(`[${prefix}] EP PREFIX:`, prefix);
+    console.log(`[${prefix}] EP UA:`, getSiteUA(prefix));
+    console.log(`[${prefix}] EP URL:`, seriesUrl);
+    console.log(`[${prefix}] EP TITLE:`, pageTitle);
+    console.log(`[${prefix}] EP ROWS:`, $("#latest-videos tbody tr").length);
+    console.log(`[${prefix}] EP ANCHORS:`, $("a[href]").length);
 
     let poster = "";
     const imgDiv = $(".album-content-image").first();
@@ -138,6 +143,12 @@ async function getEpisodes(prefix, seriesUrl) {
       if (cleanLink.includes("?post_type=videos")) return;
 
       const epNumber = extractEpisodeNumber(link, text, seriesUrl);
+      console.log(`[${prefix}] ROW DEBUG:`, {
+        link,
+        text: text.trim(),
+        epNumber,
+      });
+
       if (!epNumber) return;
 
       if (!episodeMap.has(epNumber)) {
@@ -149,6 +160,8 @@ async function getEpisodes(prefix, seriesUrl) {
     });
 
     if (!episodeMap.size) {
+      console.log(`[${prefix}] FALLBACK: scanning all anchors`);
+
       $("a[href]").each((_, el) => {
         const link = ($(el).attr("href") || "").trim();
         const text = $(el).text();
@@ -160,6 +173,12 @@ async function getEpisodes(prefix, seriesUrl) {
         if (cleanLink.includes("?post_type=videos")) return;
 
         const epNumber = extractEpisodeNumber(link, text, seriesUrl);
+        console.log(`[${prefix}] FALLBACK ROW DEBUG:`, {
+          link,
+          text: text.trim(),
+          epNumber,
+        });
+
         if (!epNumber) return;
 
         if (!episodeMap.has(epNumber)) {
@@ -172,6 +191,12 @@ async function getEpisodes(prefix, seriesUrl) {
     }
 
     const episodes = [...episodeMap.values()].sort((a, b) => a.epNumber - b.epNumber);
+
+    console.log(
+      `[${prefix}] FINAL EPISODES:`,
+      episodes.map((e) => e.epNumber)
+    );
+    console.log(`[${prefix}] FINAL EP COUNT:`, episodes.length);
 
     return episodes.map((ep) => ({
       id: ep.epNumber,
@@ -186,7 +211,7 @@ async function getEpisodes(prefix, seriesUrl) {
       },
     }));
   } catch (err) {
-    console.error("khmerave meta error:", err.message);
+    console.error(`[${prefix}] meta error:`, err.message);
     return [];
   }
 }
@@ -296,18 +321,20 @@ async function getStream(prefix, episodeUrl, episode) {
 
     const html = String(data || "");
     const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
-	
-	console.log("KHMERAVE STREAM URL:", episodeUrl);
-	console.log("KHMERAVE STREAM CANDIDATE:", candidate);
+
+    console.log(`[${prefix}] STREAM URL:`, episodeUrl);
+    console.log(`[${prefix}] STREAM CANDIDATE:`, candidate);
 
     if (!candidate) return null;
 
     const normalizedCandidate = normalizeOkUrl(candidate);
 
     if (/ok\.ru/.test(normalizedCandidate)) {
-	  console.log("KHMERAVE OK URL:", normalizedCandidate);	
+      console.log(`[${prefix}] OK URL:`, normalizedCandidate);
+
       const direct = await resolveOkRuToDirect(normalizedCandidate, UA_MOB);
-	  console.log("KHMERAVE DIRECT:", direct);
+      console.log(`[${prefix}] DIRECT:`, direct);
+
       if (!direct) return null;
 
       return {
@@ -327,15 +354,18 @@ async function getStream(prefix, episodeUrl, episode) {
     }
 
     if (/\.(m3u8|mp4)(\?|$)/i.test(normalizedCandidate)) {
+      console.log(`[${prefix}] DIRECT FILE URL:`, normalizedCandidate);
+
       return {
         title: `Episode ${String(episode).padStart(2, "0")}`,
         url: normalizedCandidate,
       };
     }
 
+    console.log(`[${prefix}] STREAM NO MATCH FOR CANDIDATE:`, normalizedCandidate);
     return null;
   } catch (err) {
-    console.error("khmerave stream error:", err.message);
+    console.error(`[${prefix}] stream error:`, err.message);
     return null;
   }
 }
