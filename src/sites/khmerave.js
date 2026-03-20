@@ -1,5 +1,6 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
+const { extractEpisodeNumber } = require("../utils/helpers");
 
 const UA_WIN =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36";
@@ -13,7 +14,7 @@ function referer(prefix) {
 }
 
 function cleanTitle(title) {
-  return (title || "")
+  return String(title || "")
     .replace(/&#8217;/g, "'")
     .replace(/&amp;/g, "&")
     .replace(/\s+/g, " ")
@@ -21,8 +22,16 @@ function cleanTitle(title) {
 }
 
 function posterFromStyle(style) {
-  const m = (style || "").match(/url\((.*?)\)/i);
-  return m ? m[1].replace(/['"]/g, "") : "";
+  const match = String(style || "").match(/url\((.*?)\)/i);
+  return match ? match[1].replace(/['"]/g, "") : "";
+}
+
+function normalizeUrl(url = "") {
+  return String(url).trim().replace(/\/$/, "");
+}
+
+function getSiteUA(prefix) {
+  return prefix === "khmerave" ? UA_WIN : UA_MOB;
 }
 
 /* =========================
@@ -31,7 +40,10 @@ function posterFromStyle(style) {
 async function getCatalogItems(prefix, siteConfig, url) {
   try {
     const { data } = await axios.get(url, {
-      headers: { "User-Agent": UA_WIN, Referer: referer(prefix) },
+      headers: {
+        "User-Agent": UA_WIN,
+        Referer: referer(prefix),
+      },
       timeout: 15000,
     });
 
@@ -41,19 +53,16 @@ async function getCatalogItems(prefix, siteConfig, url) {
     $(".card-content").each((_, el) => {
       const link = $(el).find("a").attr("href");
       const title = cleanTitle($(el).find("h3").first().text());
-
-      const style =
-        $(el).find(".card-content-image").attr("style") || "";
-
+      const style = $(el).find(".card-content-image").attr("style") || "";
       const poster = posterFromStyle(style);
 
-      if (link && title) {
-        items.push({
-          id: link, // raw URL (hashed later in index.js)
-          name: title,
-          poster,
-        });
-      }
+      if (!link || !title) return;
+
+      items.push({
+        id: link,
+        name: title,
+        poster,
+      });
     });
 
     return items;
@@ -69,86 +78,88 @@ async function getCatalogItems(prefix, siteConfig, url) {
 async function getEpisodes(prefix, seriesUrl) {
   try {
     const { data } = await axios.get(seriesUrl, {
-      headers: { 
-	    "User-Agent": prefix === "khmerave" ? UA_WIN : UA_MOB,
-		Referer: referer(prefix),
-		"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-		"Accept-Language": "en-US,en;q=0.9"
+      headers: {
+        "User-Agent": getSiteUA(prefix),
+        Referer: referer(prefix),
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
       },
       timeout: 15000,
     });
 
     const $ = cheerio.load(data);
-
     const pageTitle = $("h1").first().text().trim() || seriesUrl;
 
-    // poster
     let poster = "";
-    const imgDiv = $(".album-content-image");
+    const imgDiv = $(".album-content-image").first();
     if (imgDiv.length) {
       poster = posterFromStyle(imgDiv.attr("style") || "");
     }
 
-    let eps = [];
+    const cleanSeries = normalizeUrl(seriesUrl);
+    const episodeMap = new Map();
 
-    // =========================
-    // EPISODE EXTRACTION
-    // =========================
-    $("a[href]").each((_, el) => {
-      let link = $(el).attr("href");
+    // Prefer KhmerAvenue episode table
+    $("#latest-videos tbody tr").each((_, row) => {
+      const a = $(row).find("a[href]").first();
+      const link = (a.attr("href") || "").trim();
+      const text = a.text();
+
       if (!link) return;
 
-      const cleanLink = link.replace(/\/$/, "");
-      const cleanSeries = seriesUrl.replace(/\/$/, "");
-
-      // ONLY allow valid episode links
+      const cleanLink = normalizeUrl(link);
       if (!cleanLink.includes("/videos/") && cleanLink !== cleanSeries) return;
+      if (cleanLink.includes("?post_type=videos")) return;
 
-      if (link.includes("?post_type=videos")) return;
-
-      let epNumber = null;
-
-      // normal episodes
-      const m = link.match(/-(\d+)(?:\/|$)/);
-      if (m) {
-        epNumber = parseInt(m[1], 10);
-      }
-
-      // fallback for episode 1
-      if (!epNumber && cleanLink === cleanSeries) {
-        epNumber = 1;
-      }
-
+      const epNumber = extractEpisodeNumber(link, text, seriesUrl);
       if (!epNumber) return;
 
-      eps.push({ link, epNumber });
+      if (!episodeMap.has(epNumber)) {
+        episodeMap.set(epNumber, {
+          link,
+          epNumber,
+        });
+      }
     });
 
-    if (!eps.length) return [];
+    // Fallback if table missing/empty
+    if (!episodeMap.size) {
+      $("a[href]").each((_, el) => {
+        const link = ($(el).attr("href") || "").trim();
+        const text = $(el).text();
 
-    // =========================
-    // REMOVE DUPLICATES
-    // =========================
-    eps = [...new Map(eps.map((e) => [e.epNumber, e])).values()];
+        if (!link) return;
 
-    // =========================
-    // SORT PROPERLY
-    // =========================
-    eps.sort((a, b) => a.epNumber - b.epNumber);
+        const cleanLink = normalizeUrl(link);
+        if (!cleanLink.includes("/videos/") && cleanLink !== cleanSeries) return;
+        if (cleanLink.includes("?post_type=videos")) return;
 
-    return eps.map((e) => ({
-      id: e.epNumber,
-      url: e.link,
+        const epNumber = extractEpisodeNumber(link, text, seriesUrl);
+        if (!epNumber) return;
+
+        if (!episodeMap.has(epNumber)) {
+          episodeMap.set(epNumber, {
+            link,
+            epNumber,
+          });
+        }
+      });
+    }
+
+    const episodes = [...episodeMap.values()].sort((a, b) => a.epNumber - b.epNumber);
+
+    return episodes.map((ep) => ({
+      id: ep.epNumber,
+      url: ep.link,
       title: pageTitle,
       season: 1,
-      episode: e.epNumber,
+      episode: ep.epNumber,
       thumbnail: poster,
       released: new Date().toISOString(),
       behaviorHints: {
         group: `${prefix}:${encodeURIComponent(seriesUrl)}`,
       },
     }));
-
   } catch (err) {
     console.error("khmerave meta error:", err.message);
     return [];
@@ -161,23 +172,27 @@ async function getEpisodes(prefix, seriesUrl) {
 function normalizeOkUrl(url) {
   if (!url) return url;
 
-  let u = url.trim();
+  let normalized = String(url).trim();
 
-  if (u.startsWith("//")) {
-    u = "https:" + u;
+  if (normalized.startsWith("//")) {
+    normalized = `https:${normalized}`;
   }
 
-  return u.replace("m.ok.ru", "ok.ru");
+  return normalized.replace("m.ok.ru", "ok.ru");
 }
 
 function tryExtractVideoCandidateFromKhmerAvenue(html) {
-  const b64 = html.match(/Base64\.decode\("(.+?)"\)/i);
+  const source = String(html || "");
+
+  const b64 = source.match(/Base64\.decode\("(.+?)"\)/i);
   if (b64?.[1]) {
     try {
       const decoded = Buffer.from(b64[1], "base64").toString("utf8");
-      const iframe = decoded.match(/<iframe[^>]+src=["']([^"']+)["']/i);
-      if (iframe?.[1]) return iframe[1];
-    } catch {}
+      const iframeMatch = decoded.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+      if (iframeMatch?.[1]) {
+        return iframeMatch[1];
+      }
+    } catch (_) {}
   }
 
   const patterns = [
@@ -187,9 +202,11 @@ function tryExtractVideoCandidateFromKhmerAvenue(html) {
     /playlist:\s*["']([^"']+)["']/i,
   ];
 
-  for (const re of patterns) {
-    const m = html.match(re);
-    if (m?.[1]) return m[1];
+  for (const pattern of patterns) {
+    const match = source.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
   }
 
   return null;
@@ -199,7 +216,7 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
   try {
     const okUrl = normalizeOkUrl(iframeUrl);
 
-    const okRes = await axios.get(okUrl, {
+    const { data } = await axios.get(okUrl, {
       headers: {
         "User-Agent": ua,
         Referer: "https://ok.ru/",
@@ -207,7 +224,7 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
       timeout: 15000,
     });
 
-    let html = String(okRes.data || "");
+    let html = String(data || "");
 
     html = html
       .replace(/\\&quot;/g, '"')
@@ -223,10 +240,10 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
       /"(https:[^"]+\.m3u8[^"]*)"/,
     ];
 
-    for (const re of patterns) {
-      const m = html.match(re);
-      if (m?.[1]) {
-        return m[1]
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match?.[1]) {
+        return match[1]
           .replace(/\\u0026/g, "&")
           .replace(/\\&/g, "&");
       }
@@ -244,23 +261,23 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
 ========================= */
 async function getStream(prefix, episodeUrl, episode) {
   try {
-    const epRes = await axios.get(episodeUrl, {
-      headers: { 
-	    "User-Agent": prefix === "khmerave" ? UA_WIN : UA_MOB,
-	    Referer: referer(prefix),
-	  },
+    const { data } = await axios.get(episodeUrl, {
+      headers: {
+        "User-Agent": getSiteUA(prefix),
+        Referer: referer(prefix),
+      },
       timeout: 15000,
     });
 
-    const html = String(epRes.data || "");
-
+    const html = String(data || "");
     const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
+
     if (!candidate) return null;
 
-    const cand = normalizeOkUrl(candidate);
+    const normalizedCandidate = normalizeOkUrl(candidate);
 
-    if (/ok\.ru/.test(cand)) {
-      const direct = await resolveOkRuToDirect(cand, UA_MOB);
+    if (/ok\.ru/.test(normalizedCandidate)) {
+      const direct = await resolveOkRuToDirect(normalizedCandidate, UA_MOB);
       if (!direct) return null;
 
       return {
@@ -279,10 +296,10 @@ async function getStream(prefix, episodeUrl, episode) {
       };
     }
 
-    if (/\.(m3u8|mp4)(\?|$)/i.test(cand)) {
+    if (/\.(m3u8|mp4)(\?|$)/i.test(normalizedCandidate)) {
       return {
         title: `Episode ${String(episode).padStart(2, "0")}`,
-        url: cand,
+        url: normalizedCandidate,
       };
     }
 
