@@ -95,29 +95,26 @@ async function getEpisodes(prefix, seriesUrl) {
     // EPISODE EXTRACTION
     // =========================
     $("a[href]").each((_, el) => {
-      const link = $(el).attr("href");
+      let link = $(el).attr("href");
       if (!link) return;
 
       const cleanLink = link.replace(/\/$/, "");
       const cleanSeries = seriesUrl.replace(/\/$/, "");
 
-      if (link.includes("?post_type=videos")) return;
+      // ONLY allow valid episode links
+      if (!cleanLink.includes("/videos/") && cleanLink !== cleanSeries) return;
 
-      // only allow links from the expected episode areas
-      if (
-        !$(el).closest("#latest-videos").length &&
-        !$(el).closest(".col-xs-6.col-sm-6.col-md-3").length
-      ) return;
+      if (link.includes("?post_type=videos")) return;
 
       let epNumber = null;
 
-      // exact KhmerAve video episode URL patterns:
-      const m = cleanLink.match(/\/videos\/[^/]+-(\d+)(?:-[^/]+)?$/i);
+      // normal episodes
+      const m = link.match(/-(\d+)(?:\/|$)/);
       if (m) {
         epNumber = parseInt(m[1], 10);
       }
 
-      // fallback for main series page = episode 1
+      // fallback for episode 1
       if (!epNumber && cleanLink === cleanSeries) {
         epNumber = 1;
       }
@@ -140,7 +137,7 @@ async function getEpisodes(prefix, seriesUrl) {
     eps.sort((a, b) => a.epNumber - b.epNumber);
 
     return eps.map((e) => ({
-      id: `${prefix}:${encodeURIComponent(e.link)}`,
+      id: e.epNumber,
       url: e.link,
       title: pageTitle,
       season: 1,
@@ -247,22 +244,11 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
 ========================= */
 async function getStream(prefix, episodeUrl, episode) {
   try {
-    
-    const idx = episodeUrl.indexOf(":");
-    if (idx !== -1) {
-      episodeUrl = decodeURIComponent(episodeUrl.slice(idx + 1));
-    }
-
-    if (!episodeUrl.startsWith("http")) {
-      console.log("INVALID EPISODE URL:", episodeUrl);
-      return null;
-    }
-
     const epRes = await axios.get(episodeUrl, {
       headers: { 
-        "User-Agent": prefix === "khmerave" ? UA_WIN : UA_MOB,
-        Referer: referer(prefix),
-      },
+	    "User-Agent": prefix === "khmerave" ? UA_WIN : UA_MOB,
+	    Referer: referer(prefix),
+	  },
       timeout: 15000,
     });
 
