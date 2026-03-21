@@ -140,10 +140,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       const PAGES_PER_BATCH = 3;
 
       const skip = Number(extra?.skip || 0);
-
-      const targetPage =
-        Math.floor(skip / WEBSITE_PAGE_SIZE) +
-        1;
+      const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
 
       let url = startUrl;
       let currentPage = 1;
@@ -180,11 +177,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
           const $el = $(el);
 
           const aImg = $el.find("a.entry-image-wrap").first();
-          const link =
-            aImg.attr("href") ||
-            $el.find("h2.entry-title a").attr("href") ||
-            "";
-
+          const link = aImg.attr("href") || $el.find("h2.entry-title a").attr("href") || "";
           const title =
             (aImg.attr("title") || "").trim() ||
             ($el.find("h2.entry-title a").first().text() || "").trim();
