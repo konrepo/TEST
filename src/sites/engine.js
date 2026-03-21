@@ -44,7 +44,7 @@ async function getPostId(url) {
   const pageTitle = $("title").text();
   let maxEp = extractMaxEpFromTitle(pageTitle);
 
-  // SundayDrama often has: <b>episode/END.70</b>
+  // SundayDrama often has: <b>episode/END.xx</b>
   if (!maxEp) {
     const epText =
       $('b:contains("episode/")').first().text() || "";
@@ -184,20 +184,74 @@ async function getEpisodes(prefix, seriesUrl) {
     return [];
   }
 
-  const maxEp = POST_INFO.get(postId)?.maxEp || null;
+  let maxEp = POST_INFO.get(postId)?.maxEp || null;
 
-  let urls = [...new Set(detail.urls)];
+  // fallback from title
+  if (!maxEp && detail?.title) {
+    const extracted = extractMaxEpFromTitle(detail.title);
+    if (extracted) {
+      maxEp = extracted;
 
-  if (maxEp && urls.length > maxEp) {
-    urls = urls.slice(0, maxEp);
+      POST_INFO.set(postId, {
+        ...(POST_INFO.get(postId) || {}),
+        maxEp
+      });
+    }
   }
 
-  return urls.map((url, index) => ({
-    id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
+  let episodes = [];
+
+  // VIP / iDrama
+  if (prefix === "vip" || prefix === "idrama") {
+    const seen = new Set();
+
+    for (let i = 0; i < detail.urls.length; i++) {
+      const url = detail.urls[i];
+
+      const m = url.match(/-(\d+)(?:\D|$)/);
+      let ep = m ? parseInt(m[1], 10) : null;
+
+      if (!ep) {
+        ep = i + 1;
+      }
+
+      if (!seen.has(ep)) {
+        seen.add(ep);
+
+        episodes.push({
+          url,
+          ep
+        });
+      }
+    }
+
+    episodes.sort((a, b) => a.ep - b.ep);
+
+    if (maxEp && episodes.length > maxEp) {
+      episodes.splice(maxEp);
+    }
+  }
+
+  // Others (preserve original extracted order)
+  else {
+    let urls = [...new Set(detail.urls)];
+
+    if (maxEp && urls.length > maxEp) {
+      urls = urls.slice(0, maxEp);
+    }
+
+    episodes = urls.map((url, index) => ({
+      url,
+      ep: index + 1
+    }));
+  }
+
+  return episodes.map(({ url, ep }) => ({
+    id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${ep}`,
     url,
     title: detail.title,
     season: 1,
-    episode: index + 1,
+    episode: ep,
     thumbnail: detail.thumbnail,
     released: new Date().toISOString(),
     behaviorHints: {
