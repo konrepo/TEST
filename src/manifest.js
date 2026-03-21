@@ -11,7 +11,7 @@ const sites = [
 
 module.exports = {
   id: "community.khmer.test",
-  version: "1.3.0-test",
+  version: "1.3.1-test",
   name: "KhmerDub Test",
   description: "Stream Experimental Build | Dev: TheDevilz.",
   logo: "https://raw.githubusercontent.com/konrepo/VIP/refs/heads/main/test.png",
