@@ -4,14 +4,14 @@ const { normalizePoster, extractVideoLinks, extractMaxEpFromTitle, extractOkIds,
 const { URL_TO_POSTID, POST_INFO, BLOG_IDS } = require("../utils/cache");
 
 const FILE_REGEX =
-  /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
+  /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;  
 
 /* =========================
    GET POST ID
 ========================= */
 async function getPostId(url) {
   if (URL_TO_POSTID.has(url)) {
-    return URL_TO_POSTID.get(url);
+	  return URL_TO_POSTID.get(url);
   }
 
   const { data } = await axiosClient.get(url);
@@ -27,7 +27,7 @@ async function getPostId(url) {
       postId = fanta.attr("data-post-id");
     }
   }
-
+  
   // SundayDrama fallback
   if (!postId) {
     const match = data.match(
@@ -36,22 +36,28 @@ async function getPostId(url) {
     if (match) {
       postId = match[1];
     }
-  }
+  }  
 
   if (!postId) return null;
-
+  
   // Extract max EP from title OR from SundayDrama "episode/END.xx"
   const pageTitle = $("title").text();
   let maxEp = extractMaxEpFromTitle(pageTitle);
+  
+  console.log("TITLE DEBUG:", {
+    url,
+    pageTitle,
+    maxEp
+  });
 
-  // SundayDrama often has: <b>episode/END.xx</b>
+  // SundayDrama often has: <b>episode/END.70</b>
   if (!maxEp) {
     const epText =
       $('b:contains("episode/")').first().text() || "";
 
     const m = epText.match(/episode\/(?:END\.)?(\d+)/i);
     if (m) maxEp = parseInt(m[1], 10);
-  }
+  } 
 
   URL_TO_POSTID.set(url, postId);
 
@@ -95,7 +101,7 @@ async function fetchFromBlog(blogId, postId) {
       const okIds = extractOkIds(content);
 
       if (hasOkEmbed && okIds.length) {
-        urls = okIds.map(id => `https://ok.ru/videoembed/${id}`);
+		urls = okIds.map(id => `https://ok.ru/videoembed/${id}`);
       }
     }
 
@@ -136,7 +142,9 @@ async function getStreamDetail(postId) {
 async function getEpisodes(prefix, seriesUrl) {
   const postId = await getPostId(seriesUrl);
 
-  // Sunday playlist
+  // =========================
+  // SundayDrama playlist
+  // =========================
   if (!postId && prefix === "sunday") {
     const { data } = await axiosClient.get(seriesUrl);
 
@@ -160,31 +168,43 @@ async function getEpisodes(prefix, seriesUrl) {
 
     const normalizedPoster = normalizePoster(pagePoster || "");
 
-    return uniqueUrls.map((url, index) => ({
-      id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
-      url,
-      title: `Episode ${index + 1}`,
-      season: 1,
-      episode: index + 1,
-      thumbnail: normalizedPoster,
-      released: new Date().toISOString(),
-      behaviorHints: {
-        group: `${prefix}:${encodeURIComponent(seriesUrl)}`
-      }
-    }));
+    return uniqueUrls.map((url, index) => {
+      const m = url.match(/-(\d+)/);
+      const epNum = m ? parseInt(m[1], 10) : index + 1;
+
+      return {
+        id: epNum,
+        url,
+        title: `Episode ${epNum}`,
+        season: 1,
+        episode: epNum,
+        thumbnail: normalizedPoster,
+        released: new Date().toISOString(),
+        behaviorHints: {
+          group: `${prefix}:${encodeURIComponent(seriesUrl)}`
+        }
+      };
+    });
   }
 
-  if (!postId) {
-    return [];
-  }
+  // =========================
+  // No postId
+  // =========================
+  if (!postId) return [];
 
   const detail = await getStreamDetail(postId);
+  if (!detail) return [];
 
-  if (!detail) {
-    return [];
-  }
-
+  // =========================
+  // Get max episode
+  // =========================
   let maxEp = POST_INFO.get(postId)?.maxEp || null;
+
+  console.log("MAX EP DEBUG:", {
+    postId,
+    stored: POST_INFO.get(postId),
+    maxEp
+  });
 
   // fallback from title
   if (!maxEp && detail?.title) {
@@ -199,9 +219,11 @@ async function getEpisodes(prefix, seriesUrl) {
     }
   }
 
+  // =========================
+  // VIP / iDrama (dedupe)
+  // =========================
   let episodes = [];
 
-  // VIP / iDrama
   if (prefix === "vip" || prefix === "idrama") {
     const seen = new Set();
 
@@ -211,6 +233,7 @@ async function getEpisodes(prefix, seriesUrl) {
       const m = url.match(/-(\d+)(?:\D|$)/);
       let ep = m ? parseInt(m[1], 10) : null;
 
+      // fallback if no episode number
       if (!ep) {
         ep = i + 1;
       }
@@ -225,20 +248,20 @@ async function getEpisodes(prefix, seriesUrl) {
       }
     }
 
+    // sort properly
     episodes.sort((a, b) => a.ep - b.ep);
 
+    // apply maxEp limit
     if (maxEp && episodes.length > maxEp) {
       episodes.splice(maxEp);
     }
   }
 
-  // Others (preserve original extracted order)
+  // =========================
+  // KhmerAve / others
+  // =========================
   else {
-    let urls = [...new Set(detail.urls)];
-
-    if (maxEp && urls.length > maxEp) {
-      urls = urls.slice(0, maxEp);
-    }
+    const urls = [...new Set(detail.urls)].sort();
 
     episodes = urls.map((url, index) => ({
       url,
@@ -246,8 +269,11 @@ async function getEpisodes(prefix, seriesUrl) {
     }));
   }
 
+  console.log("FINAL MAX EP:", maxEp);
+  console.log("FINAL EP COUNT:", episodes.length);
+
   return episodes.map(({ url, ep }) => ({
-    id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${ep}`,
+    id: ep,
     url,
     title: detail.title,
     season: 1,
@@ -305,7 +331,7 @@ async function resolveOkEmbed(embedUrl) {
     .replace(/\\u0026/g, "&")
     .replace(/\\\//g, "/")
     .replace(/&amp;/g, "&")
-    .replace(/\\&quot;.*/g, "");
+    .replace(/\\&quot;.*/g, ""); 
 }
 
 function buildStream(url, episode) {
@@ -328,7 +354,7 @@ function buildStream(url, episode) {
 
   return {
     url,
-    name: "KhmerDub",
+    // name: "KhmerDub",
     title: `Episode ${episode}`,
     type: isM3U8 ? "hls" : undefined,
     behaviorHints: {
@@ -346,6 +372,7 @@ function buildStream(url, episode) {
    STREAM
 ========================= */
 async function getStream(prefix, episodeUrl, episode) {
+
   // Sunday URL
   if (prefix === "sunday") {
     const stream = buildStream(episodeUrl, episode);
@@ -378,6 +405,7 @@ async function getStream(prefix, episodeUrl, episode) {
 ========================= */
 async function getCatalogItems(prefix, siteConfig, url) {
   try {
+
     // === Sunday Blogger Pagination Support ===
     if (prefix === "sunday") {
       const allItems = [];
@@ -411,7 +439,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
           const normalizedPoster = normalizePoster(poster);
 
           allItems.push({
-            id: `${prefix}:${encodeURIComponent(link)}`,
+            id: link,
             name: title,
             poster: normalizedPoster,
           });
@@ -447,13 +475,14 @@ async function getCatalogItems(prefix, siteConfig, url) {
       const normalizedPoster = normalizePoster(poster);
 
       return {
-        id: `${prefix}:${encodeURIComponent(link)}`,
+        id: link,
         name: title,
         poster: normalizedPoster,
       };
     });
 
     return results.filter(Boolean);
+
   } catch {
     return [];
   }

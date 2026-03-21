@@ -2,11 +2,11 @@ const TYPE = "series";
 const EXTRA = ["search", "skip"];
 
 const sites = [
-  { id: "vip", name: "Phumikhmer" },
-  { id: "sunday", name: "SundayDrama" },
-  { id: "idrama", name: "iDramaHD" },
-  { id: "khmerave", name: "KhmerAve" },
-  { id: "merlkon", name: "Merlkon" },
+  { id: "vip", name: "Phumikhmer-test" },
+  { id: "sunday", name: "SundayDrama-test" },
+  { id: "idrama", name: "iDramaHD-test" },
+  { id: "khmerave", name: "KhmerAve-test" },
+  { id: "merlkon", name: "Merlkon-test" },
 ];
 
 module.exports = {
@@ -15,7 +15,6 @@ module.exports = {
   name: "KhmerDub Test",
   description: "Stream Experimental Build | Dev: TheDevilz.",
   logo: "https://raw.githubusercontent.com/konrepo/VIP/refs/heads/main/test.png",
-
 
   resources: ["catalog", "meta", "stream"],
   types: [TYPE],
