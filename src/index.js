@@ -134,17 +134,16 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 
       const startUrl = extra?.search
         ? `${base}/search?q=${encodeURIComponent(extra.search)}&max-results=20`
-        : `${base}/?max-results=20`;
+        : `${base}/`;
 
       const WEBSITE_PAGE_SIZE = 20;
       const PAGES_PER_BATCH = 3;
 
       const skip = Number(extra?.skip || 0);
-      const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
 
       let url = startUrl;
-      let currentPage = 1;
       let allItems = [];
+      const seenPageUrls = new Set();
 
       const headers = {
         "User-Agent":
@@ -152,22 +151,14 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         Referer: `${base}/`,
       };
 
-      // move forward to target page
-      while (currentPage < targetPage && url) {
-        const { data } = await axiosClient.get(url, { headers });
-        const $ = cheerio.load(data);
+      // fetch pages until have enough items
+      while (
+        url &&
+        allItems.length < skip + WEBSITE_PAGE_SIZE &&
+        !seenPageUrls.has(url)
+      ) {
+        seenPageUrls.add(url);
 
-        const older =
-          $("a.blog-pager-older-link").attr("href") ||
-          $("#Blog1_blog-pager-older-link").attr("href") ||
-          "";
-
-        url = older ? older : null;
-        currentPage++;
-      }
-
-      // fetch multiple pages
-      for (let i = 0; i < PAGES_PER_BATCH && url; i++) {
         const { data } = await axiosClient.get(url, { headers });
         const $ = cheerio.load(data);
 
@@ -177,7 +168,11 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
           const $el = $(el);
 
           const aImg = $el.find("a.entry-image-wrap").first();
-          const link = aImg.attr("href") || $el.find("h2.entry-title a").attr("href") || "";
+          const link =
+            aImg.attr("href") ||
+            $el.find("h2.entry-title a").attr("href") ||
+            "";
+
           const title =
             (aImg.attr("title") || "").trim() ||
             ($el.find("h2.entry-title a").first().text() || "").trim();
@@ -210,15 +205,11 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       const uniq = uniqById(allItems);
       const fixed = applyMetaId(uniq, id);
 
-      const offset =
-        skip -
-        (targetPage - 1) * WEBSITE_PAGE_SIZE;
-
       const result = {
         metas: mapMetas(
           fixed.slice(
-            offset,
-            offset + WEBSITE_PAGE_SIZE
+            skip,
+            skip + WEBSITE_PAGE_SIZE
           ),
           TYPE
         ),
