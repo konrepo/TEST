@@ -94,8 +94,9 @@ async function getEpisodes(prefix, seriesUrl) {
 
         let epNumber = 1;
         if (!link.includes("/album/")) {
-          const m = link.match(/-(\d+)/);
-          if (m) epNumber = parseInt(m[1], 10);
+          const m = link.match(/-(\d+)\/?$/);
+          if (m) epNumber = parseInt(m[1], 10
+		  );
         }
 
         eps.push({ link, epNumber });
