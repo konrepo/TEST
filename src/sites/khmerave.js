@@ -308,7 +308,8 @@ async function getStream(prefix, seriesUrl, episode) {
       if (!direct) return null;
 
       return {
-        title: `Episode ${String(episode).padStart(2, "0")}`,
+		name: `Episode ${episode}`,
+        title: `Episode ${episode}`,
         url: direct,
         behaviorHints: {
           notWebReady: true,
@@ -321,7 +322,8 @@ async function getStream(prefix, seriesUrl, episode) {
 
     if (/\.(m3u8|mp4)(\?|$)/i.test(cand)) {
       return {
-        title: `Episode ${String(episode).padStart(2, "0")}`,
+		name: `Episode ${episode}`,
+        title: `Episode ${episode}`,
         url: cand,
       };
     }
