@@ -201,8 +201,6 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
   try {
     const okUrl = normalizeOkUrl(iframeUrl);
 
-    console.log("OK Request:", okUrl);
-
     const okRes = await axios.get(okUrl, {
       headers: {
         "User-Agent": ua,
@@ -243,15 +241,12 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
     }
 
     if (!match || !match[1]) {
-      console.log("No m3u8 found in OK page");
       return null;
     }
 
     const cleanUrl = match[1]
       .replace(/\\u0026/g, "&")
       .replace(/\\&/g, "&");
-
-    console.log("Direct stream:", cleanUrl);
 
     return cleanUrl;
 
@@ -308,8 +303,7 @@ async function getStream(prefix, seriesUrl, episode) {
       if (!direct) return null;
 
       return {
-		name: `Episode ${episode}`,
-        title: `Episode ${episode}`,
+        title: `Episode ${String(episode).padStart(2, "0")}`,,
         url: direct,
         behaviorHints: {
           notWebReady: true,
@@ -322,8 +316,7 @@ async function getStream(prefix, seriesUrl, episode) {
 
     if (/\.(m3u8|mp4)(\?|$)/i.test(cand)) {
       return {
-		name: `Episode ${episode}`,
-        title: `Episode ${episode}`,
+        title: `Episode ${String(episode).padStart(2, "0")}`,
         url: cand,
       };
     }
