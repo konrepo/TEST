@@ -43,12 +43,6 @@ async function getPostId(url) {
   // Extract max EP from title OR from SundayDrama "episode/END.xx"
   const pageTitle = $("title").text();
   let maxEp = extractMaxEpFromTitle(pageTitle);
-  
-  console.log("TITLE DEBUG:", {
-    url,
-    pageTitle,
-    maxEp
-  });
 
   // SundayDrama often has: <b>episode/END.70</b>
   if (!maxEp) {
@@ -142,10 +136,8 @@ async function getStreamDetail(postId) {
 async function getEpisodes(prefix, seriesUrl) {
   const postId = await getPostId(seriesUrl);
 
-  // =========================
-  // SundayDrama playlist
-  // =========================
-  if (!postId && prefix === "sunday") {
+  // Sunday playlist
+  if (!postId && prefix === "sunday") {  
     const { data } = await axiosClient.get(seriesUrl);
 
     FILE_REGEX.lastIndex = 0;
@@ -157,132 +149,49 @@ async function getEpisodes(prefix, seriesUrl) {
       urls.push(match[1]);
     }
 
-    const uniqueUrls = [...new Set(urls)];
-    if (!uniqueUrls.length) return [];
-
-    const $ = cheerio.load(data);
+    const $ = cheerio.load(data);	
     const pagePoster =
       $("meta[property='og:image']").attr("content") ||
       $("link[rel='image_src']").attr("href") ||
       "";
 
-    const normalizedPoster = normalizePoster(pagePoster || "");
+    const normalizedPoster = normalizePoster(pagePoster);
 
-    return uniqueUrls.map((url, index) => {
-      const m = url.match(/-(\d+)/);
-      const epNum = m ? parseInt(m[1], 10) : index + 1;
-
-      return {
-        id: epNum,
-        url,
-        title: `Episode ${epNum}`,
-        season: 1,
-        episode: epNum,
-        thumbnail: normalizedPoster,
-        released: new Date().toISOString(),
-        behaviorHints: {
-          group: `${prefix}:${encodeURIComponent(seriesUrl)}`
-        }
-      };
-    });
-  }
-
-  // =========================
-  // No postId
-  // =========================
-  if (!postId) return [];
-
-  const detail = await getStreamDetail(postId);
-  if (!detail) return [];
-
-  // =========================
-  // Get max episode
-  // =========================
-  let maxEp = POST_INFO.get(postId)?.maxEp || null;
-
-  console.log("MAX EP DEBUG:", {
-    postId,
-    stored: POST_INFO.get(postId),
-    maxEp
-  });
-
-  // fallback from title
-  if (!maxEp && detail?.title) {
-    const extracted = extractMaxEpFromTitle(detail.title);
-    if (extracted) {
-      maxEp = extracted;
-
-      POST_INFO.set(postId, {
-        ...(POST_INFO.get(postId) || {}),
-        maxEp
-      });
-    }
-  }
-
-  // =========================
-  // VIP / iDrama (dedupe)
-  // =========================
-  let episodes = [];
-
-  if (prefix === "vip" || prefix === "idrama") {
-    const seen = new Set();
-
-    for (let i = 0; i < detail.urls.length; i++) {
-      const url = detail.urls[i];
-
-      const m = url.match(/-(\d+)(?:\D|$)/);
-      let ep = m ? parseInt(m[1], 10) : null;
-
-      // fallback if no episode number
-      if (!ep) {
-        ep = i + 1;
-      }
-
-      if (!seen.has(ep)) {
-        seen.add(ep);
-
-        episodes.push({
-          url,
-          ep
-        });
-      }
-    }
-
-    // sort properly
-    episodes.sort((a, b) => a.ep - b.ep);
-
-    // apply maxEp limit
-    if (maxEp && episodes.length > maxEp) {
-      episodes.splice(maxEp);
-    }
-  }
-
-  // =========================
-  // KhmerAve / others
-  // =========================
-  else {
-    const urls = [...new Set(detail.urls)].sort();
-
-    episodes = urls.map((url, index) => ({
-      url,
-      ep: index + 1
+    return urls.map((url, index) => ({
+      id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
+      title: `Episode ${index + 1}`,
+      season: 1,
+      episode: index + 1,
+      thumbnail: normalizedPoster,
+      released: new Date().toISOString(),
     }));
   }
 
-  console.log("FINAL MAX EP:", maxEp);
-  console.log("FINAL EP COUNT:", episodes.length);
+  if (!postId) {
+    return [];
+  }
 
-  return episodes.map(({ url, ep }) => ({
-    id: ep,
-    url,
+  const detail = await getStreamDetail(postId);
+
+  if (!detail) {
+    return [];
+  }
+
+  const maxEp = POST_INFO.get(postId)?.maxEp || null;
+
+  let urls = [...new Set(detail.urls)];
+
+  if (maxEp && urls.length > maxEp) {
+    urls = urls.slice(0, maxEp);
+  }
+
+  return urls.map((url, index) => ({
+    id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
     title: detail.title,
     season: 1,
-    episode: ep,
+    episode: index + 1,
     thumbnail: detail.thumbnail,
     released: new Date().toISOString(),
-    behaviorHints: {
-      group: `${prefix}:${encodeURIComponent(seriesUrl)}`
-    }
   }));
 }
 
@@ -331,73 +240,85 @@ async function resolveOkEmbed(embedUrl) {
     .replace(/\\u0026/g, "&")
     .replace(/\\\//g, "/")
     .replace(/&amp;/g, "&")
-    .replace(/\\&quot;.*/g, ""); 
+    .replace(/\\&quot;.*/g, ""); // safety: cut anything after if it appears
 }
+
 
 function buildStream(url, episode) {
   const isOk = /ok\.ru|okcdn\.ru/i.test(url);
-  const isM3U8 = url.includes(".m3u8");
-
-  let headers = null;
-
-  if (isOk) {
-    headers = {
-      Referer: "https://ok.ru/",
-      Origin: "https://ok.ru"
-    };
-  } else if (url.includes("sooplive.co.kr")) {
-    headers = {
-      Referer: "https://www.sundaydrama.com/",
-      Origin: "https://www.sundaydrama.com"
-    };
-  }
 
   return {
     url,
-    // name: "KhmerDub",
+    name: "KhmerDub",
     title: `Episode ${episode}`,
-    type: isM3U8 ? "hls" : undefined,
-    behaviorHints: {
-      group: "khmerdub",
-      ...(headers && {
-        proxyHeaders: {
-          request: headers
+    type: url.includes(".m3u8") ? "hls" : undefined,
+    behaviorHints: isOk
+      ? {
+          group: "khmerdub",
+          proxyHeaders: {
+            request: {
+              Referer: "https://ok.ru/",
+              Origin: "https://ok.ru"
+            }
+          }
         }
-      })
-    }
+      : { group: "khmerdub" }
   };
 }
 
 /* =========================
    STREAM
 ========================= */
-async function getStream(prefix, episodeUrl, episode) {
+async function getStream(prefix, seriesUrl, episode) {
+  const postId = await getPostId(seriesUrl);
+  // Sunday fallback streaming
+  if (prefix === "sunday" && !postId) {
 
-  // Sunday URL
-  if (prefix === "sunday") {
-    const stream = buildStream(episodeUrl, episode);
-    return stream;
+    const { data } = await axiosClient.get(seriesUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Referer: seriesUrl
+      }
+    });
+
+    const links = extractVideoLinks(data);
+    const url = links[episode - 1];
+    if (!url) return null;
+
+    return buildStream(url, episode);
   }
 
-  // Other sites
-  let url = episodeUrl;
+  if (!postId) return null;
 
-  // Resolve player.php
+  const detail = await getStreamDetail(postId);
+  if (!detail) {
+	return null;
+  }
+
+  let url = detail.urls[episode - 1];
+  if (!url) {
+	return null;
+  }
+
+  // Resolve player.php first
   if (url.includes("player.php")) {
-    const resolved = await resolvePlayerUrl(url);
-    if (!resolved) return null;
-    url = resolved;
+	  const resolved = await resolvePlayerUrl(url);
+	  if (!resolved) {
+		return null;
+	  }
+	  url = resolved;
   }
 
-  // Resolve OK embed
+  // Resolve OK embed page
   if (url.includes("ok.ru/videoembed/")) {
-    const resolved = await resolveOkEmbed(url);
-    if (!resolved) return null;
-    url = resolved;
+	  const resolved = await resolveOkEmbed(url);
+	  if (!resolved) {
+		return null;
+	  }
+	  url = resolved;
   }
 
-  const stream = buildStream(url, episode);
-  return stream;
+  return buildStream(url, episode);
 }
 
 /* =========================
@@ -439,7 +360,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
           const normalizedPoster = normalizePoster(poster);
 
           allItems.push({
-            id: link,
+            id: `${prefix}:${encodeURIComponent(link)}`,
             name: title,
             poster: normalizedPoster,
           });
@@ -475,7 +396,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
       const normalizedPoster = normalizePoster(poster);
 
       return {
-        id: link,
+        id: `${prefix}:${encodeURIComponent(link)}`,
         name: title,
         poster: normalizedPoster,
       };
