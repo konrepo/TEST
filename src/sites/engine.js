@@ -1,6 +1,6 @@
 const cheerio = require("cheerio");
 const axiosClient = require("../utils/fetch");
-const { normalizePoster, extractVideoLinks, extractMaxEpFromTitle, extractOkIds, uniqById } = require("../utils/helpers");
+const { normalizePoster, extractVideoLinks, extractEpisodeNumber, isProbablyVideoUrl, extractMaxEpFromTitle, extractOkIds, uniqById } = require("../utils/helpers");
 const { URL_TO_POSTID, POST_INFO, BLOG_IDS } = require("../utils/cache");
 
 const FILE_REGEX =
@@ -93,7 +93,7 @@ async function fetchFromBlog(blogId, postId) {
 
     thumbnail = normalizePoster(thumbnail);
 
-    let urls = extractVideoLinks(content);
+    let urls = extractVideoLinks(content).filter(isProbablyVideoUrl);
 
     // If blogger post stores OK.ru IDs (like: 9488...; 9488...; {embed=ok})
     if (!urls.length) {
@@ -101,7 +101,9 @@ async function fetchFromBlog(blogId, postId) {
       const okIds = extractOkIds(content);
 
       if (hasOkEmbed && okIds.length) {
-		urls = okIds.map(id => `https://ok.ru/videoembed/${id}`);
+		urls = okIds
+		  .map(id => `https://ok.ru/videoembed/${id}`)
+		  .filter(isProbablyVideoUrl);
       }
     }
 
@@ -157,7 +159,7 @@ async function getEpisodes(prefix, seriesUrl) {
       urls.push(match[1]);
     }
 
-    const uniqueUrls = [...new Set(urls)];
+    const uniqueUrls = [...new Set(urls)].filter(isProbablyVideoUrl);
     if (!uniqueUrls.length) return [];
 
     const $ = cheerio.load(data);
@@ -168,11 +170,17 @@ async function getEpisodes(prefix, seriesUrl) {
 
     const normalizedPoster = normalizePoster(pagePoster || "");
 
-    return uniqueUrls.map((url, index) => {
-      const m = url.match(/-(\d+)/);
-      const epNum = m ? parseInt(m[1], 10) : index + 1;
+    const episodes = [];
+    const seen = new Set();
 
-      return {
+    for (let i = 0; i < uniqueUrls.length; i++) {
+      const url = uniqueUrls[i];
+      const epNum = extractEpisodeNumber(url, i);
+
+      if (seen.has(epNum)) continue;
+      seen.add(epNum);
+
+      episodes.push({
         id: epNum,
         url,
         title: `Episode ${epNum}`,
@@ -183,8 +191,11 @@ async function getEpisodes(prefix, seriesUrl) {
         behaviorHints: {
           group: `${prefix}:${encodeURIComponent(seriesUrl)}`
         }
-      };
-    });
+      });
+    }
+
+    episodes.sort((a, b) => a.episode - b.episode);
+    return episodes;
   }
 
   // =========================
@@ -219,41 +230,28 @@ async function getEpisodes(prefix, seriesUrl) {
     }
   }
 
-  // =========================
-  // VIP / iDrama (dedupe)
-  // =========================
   let episodes = [];
 
+  // =========================
+  // VIP / iDrama
+  // =========================
   if (prefix === "vip" || prefix === "idrama") {
     const seen = new Set();
 
     for (let i = 0; i < detail.urls.length; i++) {
       const url = detail.urls[i];
+      const ep = extractEpisodeNumber(url, i, maxEp);
 
-      const m = url.match(/-(\d+)(?:\D|$)/);
-      let ep = m ? parseInt(m[1], 10) : null;
+      if (seen.has(ep)) continue;
+      seen.add(ep);
 
-      // fallback if no episode number
-      if (!ep) {
-        ep = i + 1;
-      }
-
-      if (!seen.has(ep)) {
-        seen.add(ep);
-
-        episodes.push({
-          url,
-          ep
-        });
-      }
+      episodes.push({ url, ep });
     }
 
-    // sort properly
     episodes.sort((a, b) => a.ep - b.ep);
 
-    // apply maxEp limit
-    if (maxEp && episodes.length > maxEp) {
-      episodes.splice(maxEp);
+    if (maxEp) {
+      episodes = episodes.filter(item => item.ep <= maxEp);
     }
   }
 
@@ -261,12 +259,23 @@ async function getEpisodes(prefix, seriesUrl) {
   // KhmerAve / others
   // =========================
   else {
-    const urls = [...new Set(detail.urls)].sort();
+    const seen = new Set();
 
-    episodes = urls.map((url, index) => ({
-      url,
-      ep: index + 1
-    }));
+    for (let i = 0; i < detail.urls.length; i++) {
+      const url = detail.urls[i];
+      const ep = extractEpisodeNumber(url, i, maxEp);
+
+      if (seen.has(ep)) continue;
+      seen.add(ep);
+
+      episodes.push({ url, ep });
+    }
+
+    episodes.sort((a, b) => a.ep - b.ep);
+
+    if (maxEp) {
+      episodes = episodes.filter(item => item.ep <= maxEp);
+    }
   }
 
   console.log("FINAL MAX EP:", maxEp);
@@ -405,7 +414,6 @@ async function getStream(prefix, episodeUrl, episode) {
 ========================= */
 async function getCatalogItems(prefix, siteConfig, url) {
   try {
-
     // === Sunday Blogger Pagination Support ===
     if (prefix === "sunday") {
       const allItems = [];
@@ -421,7 +429,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
         for (const el of articles) {
           const $el = $$(el);
           const $titleEl = $el.find(siteConfig.titleSelector).first();
-		  const $posterEl = $el.find(siteConfig.posterSelector).first();
+          const $posterEl = $el.find(siteConfig.posterSelector).first();
 
           const title =
             $titleEl.text().trim() ||
@@ -431,13 +439,13 @@ async function getCatalogItems(prefix, siteConfig, url) {
             $el.find("img").first().attr("alt")?.trim() ||
             "";
 
-          const link = a.attr("href");
+          const link =
             $titleEl.attr("href") ||
             $posterEl.attr("href") ||
             $posterEl.closest("a").attr("href") ||
             $el.find("a").first().attr("href") ||
             "";
-		  
+
           if (!title || !link) continue;
 
           let poster = "";
@@ -447,7 +455,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
           }
 
           if (!poster) {
-          const $img = $el.find("img").first();
+            const $img = $el.find("img").first();
             for (const attr of ["data-src", "data-lazy-src", "src"]) {
               poster = $img.attr(attr) || poster;
               if (poster) break;
@@ -455,9 +463,9 @@ async function getCatalogItems(prefix, siteConfig, url) {
           }
 
           allItems.push({
-            id: link,
+            id: link.trim(),
             name: title,
-            poster: normalizedPoster,
+            poster: normalizePoster(poster),
           });
         }
 
@@ -475,12 +483,11 @@ async function getCatalogItems(prefix, siteConfig, url) {
 
     const results = articles.map((el) => {
       const $el = $(el);
-	  
       const $titleEl = $el.find(siteConfig.titleSelector).first();
-	  const $posterEl = $el.find(siteConfig.posterSelector).first();
+      const $posterEl = $el.find(siteConfig.posterSelector).first();
 
       const title =
-      $titleEl.text().trim() ||
+        $titleEl.text().trim() ||
         $titleEl.attr("title")?.trim() ||
         $posterEl.attr("title")?.trim() ||
         $posterEl.attr("alt")?.trim() ||
@@ -493,7 +500,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
         $posterEl.closest("a").attr("href") ||
         $el.find("a").first().attr("href") ||
         "";
-	  
+
       if (!title || !link) return null;
 
       let poster = "";
@@ -518,9 +525,8 @@ async function getCatalogItems(prefix, siteConfig, url) {
     });
 
     return uniqById(results.filter(Boolean));
-
   } catch (err) {
-	console.error("getCatalogItems error:", prefix, url, err.message);  
+    console.error("getCatalogItems error:", prefix, url, err.message);
     return [];
   }
 }
