@@ -15,7 +15,7 @@ const TYPE = "series";
 
 const ENGINES = {
   vip: engine,
-  sunday: engine,  
+  sunday: engine,
   idrama: engine,
   khmerave,
   merlkon: khmerave,
@@ -170,7 +170,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         ? `${base}/search?q=${encodeURIComponent(extra.search)}&max-results=12`
         : `${base}/?max-results=12`;
 
-      const WEBSITE_PAGE_SIZE = 12;
+      const WEBSITE_PAGE_SIZE = site.pageSize || 12;
       const PAGES_PER_BATCH = 3;
 
       const skip = Number(extra?.skip || 0);
@@ -189,16 +189,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       // move to requested page
       while (currentPage < targetPage && url) {
         const { data } = await axiosClient.get(url, { headers });
-        const $ = cheerio.load(data);
-
-        const older =
-          $("a.blog-pager-older-link").attr("href") ||
-          $("#Blog1_blog-pager-older-link").attr("href") ||
-          $(".blog-pager-older-link").attr("href") ||
-          $('a[rel="next"]').attr("href") ||
-          "";
-
-        url = older ? older : null;
+        url = siteEngine.getNextPageUrl(base, data);
         currentPage++;
       }
 
@@ -208,16 +199,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         allItems.push(...items);
 
         const { data } = await axiosClient.get(url, { headers });
-        const $ = cheerio.load(data);
-
-        const older =
-          $("a.blog-pager-older-link").attr("href") ||
-          $("#Blog1_blog-pager-older-link").attr("href") ||
-          $(".blog-pager-older-link").attr("href") ||
-          $('a[rel="next"]').attr("href") ||
-          "";
-
-        url = older ? older : null;
+        url = siteEngine.getNextPageUrl(base, data);
       }
 
       const uniq = uniqById(allItems);
@@ -245,7 +227,6 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     console.error("catalog error:", e);
     return { metas: [] };
   }
-
 });
 
 /* =========================
