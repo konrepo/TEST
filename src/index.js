@@ -171,7 +171,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         : `${base}/?max-results=12`;
 
       const WEBSITE_PAGE_SIZE = site.pageSize || 12;
-      const PAGES_PER_BATCH = 3;
+      const PAGES_PER_BATCH = 1;
 
       const skip = Number(extra?.skip || 0);
       const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
