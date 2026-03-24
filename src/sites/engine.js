@@ -6,8 +6,7 @@ const {
   extractVideoLinks, 
   extractMaxEpFromTitle, 
   extractOkIds, 
-  uniqById, 
-  extractEmbedTokens
+  uniqById
 } = require("../utils/helpers");
 
 const FILE_REGEX =
@@ -89,14 +88,6 @@ async function fetchFromBlog(blogId, postId) {
 
     const title = data.entry.title.$t;
     const content = data.entry.content?.$t || "";
-	
-	console.log("========== BLOG DEBUG ==========");
-	console.log("POST ID:", postId);
-	console.log("TITLE:", title);
-	console.log("DIRECT URLS:", extractVideoLinks(content));
-	console.log("TOKENS:", extractEmbedTokens(content));
-	console.log("================================");
-	
     const $content = cheerio.load(content);
 
     let thumbnail =
@@ -110,52 +101,20 @@ async function fetchFromBlog(blogId, postId) {
 
     let urls = extractVideoLinks(content);
 
-    // Support tokenized embeds like {ok=...} {mp4=...} {m3u8=...}
-    if (!urls.length) {
-      const tokens = extractEmbedTokens(content);
-
-      if (tokens.length) {
-        urls = tokens
-          .map(({ type, value }) => {
-            switch (type) {
-              case "ok":
-                return `https://ok.ru/videoembed/${value}`;
-
-              case "mp4":
-              case "m3u8":
-                return value;
-
-              case "gd":
-                // Adjust later if your resolver expects a different Google Drive form
-                return `https://drive.google.com/file/d/${value}/preview`;
-
-              case "dm":
-                return `https://www.dailymotion.com/embed/video/${value}`;
-
-              default:
-                return null;
-            }
-          })
-          .filter(Boolean);
-      }
-    }
-
-    // Old fallback for raw OK IDs + {embed=ok}
+    // If blogger post stores OK.ru IDs (like: 9488...; 9488...; {embed=ok})
     if (!urls.length) {
       const hasOkEmbed = /\{embed\s*=\s*ok\}/i.test(content);
       const okIds = extractOkIds(content);
 
       if (hasOkEmbed && okIds.length) {
-        urls = okIds.map((id) => `https://ok.ru/videoembed/${id}`);
+		urls = okIds.map(id => `https://ok.ru/videoembed/${id}`);
       }
     }
-
-    urls = [...new Set(urls)];
 
     if (!urls.length) return null;
 
     return { title, thumbnail, urls };
-  } catch (err) {
+  } catch {
     return null;
   }
 }
