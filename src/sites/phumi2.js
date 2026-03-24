@@ -3,26 +3,141 @@ const axiosClient = require("../utils/fetch");
 const {
   normalizePoster,
   extractVideoLinks,
-  extractOkIds,
   extractMaxEpFromTitle,
+  extractOkIds,
   uniqById
 } = require("../utils/helpers");
-
-const {
-  URL_TO_POSTID,
-  POST_INFO,
-  BLOG_IDS
-} = require("../utils/cache");
+const { URL_TO_POSTID, POST_INFO, BLOG_IDS } = require("../utils/cache");
 
 /* =========================
    CONFIG
 ========================= */
-const PHUMI2_BLOG_IDS = [
+const PAGE_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+};
+
+const PHUMI_FEED_IDS = [
   BLOG_IDS.SUNDAY1,
   BLOG_IDS.SUNDAY2,
   BLOG_IDS.SUNDAY3,
   BLOG_IDS.SUNDAY4
 ].filter(Boolean);
+
+/* =========================
+   HELPERS
+========================= */
+function absolutizeUrl(url, baseUrl) {
+  if (!url) return "";
+  try {
+    return new URL(url, baseUrl).toString();
+  } catch {
+    return url;
+  }
+}
+
+function cleanTitle(text) {
+  return (text || "").replace(/\s+/g, " ").trim();
+}
+
+function normalizePhumiPoster(url) {
+  if (!url) return "";
+  return normalizePoster(
+    url
+      .replace(/\/w\d+-h\d+[^/]*\//gi, "/s0/")
+      .replace(/\/s\d+(-c)?\//gi, "/s0/")
+      .replace(/=w\d+-h\d+[^&]*/gi, "=s0")
+      .replace(/=s\d+(-c)?/gi, "=s0")
+  );
+}
+
+function extractOlderLink($, baseUrl) {
+  const candidates = [
+    $("a.blog-pager-older-link").attr("href"),
+    $("#Blog1_blog-pager-older-link").attr("href"),
+    $(".blog-pager-older-link").attr("href"),
+    $('a[rel="next"]').attr("href")
+  ];
+
+  const found = candidates.find(Boolean);
+  return found ? absolutizeUrl(found, baseUrl) : null;
+}
+
+function extractGridItems($, prefix, pageUrl) {
+  const items = [];
+  const posts = $("div.blog-posts div.grid-posts article.blog-post").toArray();
+
+  for (const post of posts) {
+    const $el = $(post);
+
+    const linkEl =
+      $el.find("div.post-filter-image a.post-filter-link").first().length
+        ? $el.find("div.post-filter-image a.post-filter-link").first()
+        : $el.find("h2.entry-title a").first();
+
+    const titleEl = $el.find("h2.entry-title").first();
+    const imgEl = $el.find("img.snip-thumbnail").first();
+
+    const link = absolutizeUrl(linkEl.attr("href") || "", pageUrl);
+    const title =
+      cleanTitle(linkEl.attr("title")) ||
+      cleanTitle(titleEl.text()) ||
+      cleanTitle(linkEl.text());
+
+    if (!title || !link) continue;
+
+    let poster =
+      imgEl.attr("data-src") ||
+      imgEl.attr("src") ||
+      linkEl.find("img").attr("data-src") ||
+      linkEl.find("img").attr("src") ||
+      $('meta[property="og:image"]').attr("content") ||
+      "";
+
+    poster = normalizePhumiPoster(poster);
+
+    items.push({
+      id: `${prefix}:${encodeURIComponent(link)}`,
+      name: title,
+      poster
+    });
+  }
+
+  return items;
+}
+
+function extractPostIds(html) {
+  const ids = new Set();
+
+  const dataPostMatches = html.match(/data-post-id="(\d+)"/g) || [];
+  for (const m of dataPostMatches) {
+    const id = m.match(/\d+/)?.[0];
+    if (id) ids.add(id);
+  }
+
+  const feedMatches =
+    html.match(/blogger\.com\/feeds\/\d+\/posts\/default\/(\d+)\?alt=json/gi) || [];
+  for (const m of feedMatches) {
+    const id = m.match(/posts\/default\/(\d+)\?alt=json/i)?.[1];
+    if (id) ids.add(id);
+  }
+
+  return Array.from(ids);
+}
+
+function getPosterFromContent(content) {
+  try {
+    const $content = cheerio.load(content || "");
+    const poster =
+      $content('meta[property="og:image"]').attr("content") ||
+      $content('meta[name="twitter:image"]').attr("content") ||
+      $content("img").first().attr("src") ||
+      "";
+    return normalizePhumiPoster(poster);
+  } catch {
+    return "";
+  }
+}
 
 /* =========================
    GET POST ID
@@ -32,72 +147,57 @@ async function getPostId(url) {
     return URL_TO_POSTID.get(url);
   }
 
-  const { data } = await axiosClient.get(url);
-  const $ = cheerio.load(data);
+  try {
+    const { data } = await axiosClient.get(url, { headers: PAGE_HEADERS });
+    const $ = cheerio.load(data);
 
-  let postId = null;
+    let postId =
+      $("#player").attr("data-post-id") ||
+      $('div[id="fanta"][data-post-id]').first().attr("data-post-id") ||
+      null;
 
-  // Common player container
-  postId = $("#player").attr("data-post-id");
-
-  // Generic fallback
-  if (!postId) {
-    const fanta = $('div[id="fanta"][data-post-id]').first();
-    if (fanta.length) {
-      postId = fanta.attr("data-post-id");
+    if (!postId) {
+      const ids = extractPostIds(data);
+      if (ids.length === 1) {
+        postId = ids[0];
+      }
     }
-  }
 
-  // Blogger feed fallback
-  if (!postId) {
-    const match = data.match(
-      /blogger\.com\/feeds\/\d+\/posts\/default\/(\d+)\?alt=json/i
-    );
-    if (match) {
-      postId = match[1];
+    if (!postId) return null;
+
+    const pageTitle = $("title").text();
+    let maxEp = extractMaxEpFromTitle(pageTitle);
+
+    if (!maxEp) {
+      const headingText =
+        $("h1.entry-title").first().text() ||
+        $("meta[property='og:title']").attr("content") ||
+        "";
+      maxEp = extractMaxEpFromTitle(headingText);
     }
-  }
 
-  // Final fallback: any data-post-id in page
-  if (!postId) {
-    const generic = data.match(/data-post-id=["'](\d+)["']/i);
-    if (generic) {
-      postId = generic[1];
+    if (!maxEp) {
+      const m = data.match(/\[(\d+)\s*(?:End|EP)\]/i);
+      if (m) maxEp = parseInt(m[1], 10);
     }
-  }
 
-  if (!postId) {
+    URL_TO_POSTID.set(url, postId);
+
+    if (maxEp) {
+      POST_INFO.set(postId, {
+        ...(POST_INFO.get(postId) || {}),
+        maxEp
+      });
+    }
+
+    return postId;
+  } catch {
     return null;
   }
-
-  // Max episode from page title
-  const pageTitle = $("title").text().trim();
-  let maxEp = extractMaxEpFromTitle(pageTitle);
-
-  // Extra fallback for strings like: [35 End]
-  if (!maxEp) {
-    const altText =
-      $("h1.entry-title").first().text().trim() ||
-      $("meta[property='og:title']").attr("content") ||
-      "";
-
-    maxEp = extractMaxEpFromTitle(altText);
-  }
-
-  URL_TO_POSTID.set(url, postId);
-
-  if (maxEp) {
-    POST_INFO.set(postId, {
-      ...(POST_INFO.get(postId) || {}),
-      maxEp
-    });
-  }
-
-  return postId;
 }
 
 /* =========================
-   FETCH BLOGGER POST DETAIL
+   BLOGGER FETCH
 ========================= */
 async function fetchFromBlog(blogId, postId) {
   const feedUrl = `https://www.blogger.com/feeds/${blogId}/posts/default/${postId}?alt=json`;
@@ -105,18 +205,15 @@ async function fetchFromBlog(blogId, postId) {
   try {
     const { data } = await axiosClient.get(feedUrl);
 
-    const title = data.entry?.title?.$t || "";
+    const title = cleanTitle(data.entry?.title?.$t || "");
     const content = data.entry?.content?.$t || "";
-    const $content = cheerio.load(content);
 
     let thumbnail =
-      $content('meta[property="og:image"]').attr("content") ||
-      $content('meta[name="twitter:image"]').attr("content") ||
-      $content("img").first().attr("src") ||
       data.entry?.media$thumbnail?.url ||
+      getPosterFromContent(content) ||
       "";
 
-    thumbnail = normalizePoster(thumbnail);
+    thumbnail = normalizePhumiPoster(thumbnail);
 
     let urls = extractVideoLinks(content);
 
@@ -127,33 +224,31 @@ async function fetchFromBlog(blogId, postId) {
       }
     }
 
-    if (!urls.length) {
-      return null;
-    }
+    if (!urls.length) return null;
 
-    return { title, thumbnail, urls };
+    return {
+      title,
+      thumbnail,
+      urls
+    };
   } catch {
     return null;
   }
 }
 
 /* =========================
-   GET STREAM DETAIL
+   STREAM DETAIL
 ========================= */
 async function getStreamDetail(postId) {
   const cached = POST_INFO.get(postId);
-  if (cached?.detail) {
-    return cached.detail;
-  }
+  if (cached?.detail) return cached.detail;
 
   const results = await Promise.all(
-    PHUMI2_BLOG_IDS.map((blogId) => fetchFromBlog(blogId, postId))
+    PHUMI_FEED_IDS.map((blogId) => fetchFromBlog(blogId, postId))
   );
 
   const detail = results.find(Boolean);
-  if (!detail) {
-    return null;
-  }
+  if (!detail) return null;
 
   POST_INFO.set(postId, {
     ...(POST_INFO.get(postId) || {}),
@@ -164,18 +259,81 @@ async function getStreamDetail(postId) {
 }
 
 /* =========================
-   RESOLVE PLAYER URL
+   CATALOG
+========================= */
+async function getCatalogItems(prefix, siteConfig, url) {
+  try {
+    const allItems = [];
+    let currentUrl = url;
+    let pagesToLoad = 3;
+
+    while (currentUrl && pagesToLoad > 0) {
+      const { data } = await axiosClient.get(currentUrl, {
+        headers: {
+          ...PAGE_HEADERS,
+          Referer: siteConfig.baseUrl || currentUrl
+        }
+      });
+
+      const $ = cheerio.load(data);
+      const pageItems = extractGridItems($, prefix, currentUrl);
+
+      allItems.push(...pageItems);
+
+      currentUrl = extractOlderLink($, currentUrl);
+      pagesToLoad -= 1;
+    }
+
+    return uniqById(allItems);
+  } catch {
+    return [];
+  }
+}
+
+/* =========================
+   EPISODES
+========================= */
+async function getEpisodes(prefix, seriesUrl) {
+  try {
+    const postId = await getPostId(seriesUrl);
+    if (!postId) return [];
+
+    const detail = await getStreamDetail(postId);
+    if (!detail?.urls?.length) return [];
+
+    const cachedInfo = POST_INFO.get(postId) || {};
+    let urls = [...new Set(detail.urls)];
+
+    if (cachedInfo.maxEp && urls.length > cachedInfo.maxEp) {
+      urls = urls.slice(0, cachedInfo.maxEp);
+    }
+
+    return urls.map((url, index) => ({
+      id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
+      title: detail.title || `Episode ${index + 1}`,
+      season: 1,
+      episode: index + 1,
+      thumbnail: detail.thumbnail || "",
+      released: new Date().toISOString()
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/* =========================
+   RESOLVE PLAYER
 ========================= */
 async function resolvePlayerUrl(playerUrl) {
   try {
     const { data } = await axiosClient.get(playerUrl, {
       headers: {
-        "User-Agent": "Mozilla/5.0",
+        ...PAGE_HEADERS,
         Referer: playerUrl
       }
     });
 
-    const html = data
+    const html = String(data)
       .replace(/\\\//g, "/")
       .replace(/&amp;/g, "&");
 
@@ -190,7 +348,7 @@ async function resolvePlayerUrl(playerUrl) {
 }
 
 /* =========================
-   RESOLVE OK.RU
+   RESOLVE OK
 ========================= */
 async function resolveOkEmbed(embedUrl) {
   try {
@@ -202,15 +360,13 @@ async function resolveOkEmbed(embedUrl) {
       }
     });
 
-    const match =
+    const hlsMatch =
       data.match(/\\&quot;ondemandHls\\&quot;:\\&quot;(https:\/\/[^"]+?\.m3u8)/) ||
       data.match(/&quot;ondemandHls&quot;:&quot;(https:\/\/[^"]+?\.m3u8)/);
 
-    if (!match) {
-      return null;
-    }
+    if (!hlsMatch) return null;
 
-    return match[1]
+    return hlsMatch[1]
       .replace(/\\u0026/g, "&")
       .replace(/\\\//g, "/")
       .replace(/&amp;/g, "&")
@@ -241,45 +397,8 @@ function buildStream(url, episode) {
             }
           }
         }
-      : {
-          group: "phumi2"
-        }
+      : { group: "phumi2" }
   };
-}
-
-/* =========================
-   EPISODES
-========================= */
-async function getEpisodes(prefix, seriesUrl) {
-  try {
-    const postId = await getPostId(seriesUrl);
-    if (!postId) {
-      return [];
-    }
-
-    const detail = await getStreamDetail(postId);
-    if (!detail) {
-      return [];
-    }
-
-    let urls = [...new Set(detail.urls)];
-    const maxEp = POST_INFO.get(postId)?.maxEp || null;
-
-    if (maxEp && urls.length > maxEp) {
-      urls = urls.slice(0, maxEp);
-    }
-
-    return urls.map((url, index) => ({
-      id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
-      title: detail.title || `Episode ${index + 1}`,
-      season: 1,
-      episode: index + 1,
-      thumbnail: detail.thumbnail || "",
-      released: new Date().toISOString()
-    }));
-  } catch {
-    return [];
-  }
 }
 
 /* =========================
@@ -288,111 +407,36 @@ async function getEpisodes(prefix, seriesUrl) {
 async function getStream(prefix, seriesUrl, episode) {
   try {
     const postId = await getPostId(seriesUrl);
-    if (!postId) {
-      return null;
-    }
+    if (!postId) return null;
 
     const detail = await getStreamDetail(postId);
-    if (!detail) {
-      return null;
-    }
+    if (!detail?.urls?.length) return null;
 
+    const cachedInfo = POST_INFO.get(postId) || {};
     let urls = [...new Set(detail.urls)];
-    const maxEp = POST_INFO.get(postId)?.maxEp || null;
 
-    if (maxEp && urls.length > maxEp) {
-      urls = urls.slice(0, maxEp);
+    if (cachedInfo.maxEp && urls.length > cachedInfo.maxEp) {
+      urls = urls.slice(0, cachedInfo.maxEp);
     }
 
     let url = urls[episode - 1];
-    if (!url) {
-      return null;
-    }
+    if (!url) return null;
 
-    // Resolve player.php?id=... -> player.php?stream=...
     if (url.includes("player.php")) {
-      const resolvedPlayer = await resolvePlayerUrl(url);
-      if (resolvedPlayer) {
-        url = resolvedPlayer;
-      }
+      const resolved = await resolvePlayerUrl(url);
+      if (!resolved) return null;
+      url = resolved;
     }
 
-    // Resolve OK embed page -> direct m3u8
     if (url.includes("ok.ru/videoembed/")) {
-      const resolvedOk = await resolveOkEmbed(url);
-      if (resolvedOk) {
-        url = resolvedOk;
-      }
+      const resolved = await resolveOkEmbed(url);
+      if (!resolved) return null;
+      url = resolved;
     }
 
     return buildStream(url, episode);
   } catch {
     return null;
-  }
-}
-
-
-/* =========================
-   GET CATALOG WITH PAGINATION
-========================= */
-async function getCatalogItems(prefix, siteConfig, url) {
-  try {
-    const allItems = [];
-    let currentUrl = url;
-    const BLOGGER_PAGES_PER_BATCH = 3;
-
-    for (let i = 0; i < BLOGGER_PAGES_PER_BATCH && currentUrl; i++) {
-      const pageUrl = new URL(currentUrl, url).toString();
-      const { data } = await axiosClient.get(pageUrl);
-      const $ = cheerio.load(data);
-
-      const posts = $("div.blog-posts div.grid-posts article.blog-post").toArray();
-
-      for (const post of posts) {
-        const $el = $(post);
-
-        const a = $el.find("div.post-filter-image a.post-filter-link").first();
-        const titleEl = $el.find("h2.entry-title").first();
-        const imgEl = $el.find("img.snip-thumbnail").first();
-
-        if (!a.length || !titleEl.length) continue;
-
-        const title =
-          titleEl.text().trim() ||
-          a.attr("title") ||
-          "";
-
-        const link = a.attr("href");
-        if (!title || !link) continue;
-
-        let poster =
-          imgEl.attr("data-src") ||
-          imgEl.attr("src") ||
-          "";
-
-        poster = normalizePoster(poster);
-
-        allItems.push({
-          id: `${prefix}:${encodeURIComponent(link)}`,
-          name: title,
-          poster
-        });
-      }
-
-      const olderHref = $("a.blog-pager-older-link").attr("href");
-
-      if (!olderHref) {
-        currentUrl = null;
-        break;
-      }
-
-      currentUrl = new URL(olderHref, pageUrl).toString();
-    }
-
-    return uniqById(allItems);
-  } catch (err) {
-    console.error("[phumi2] getCatalogItems error:", err.message);
-    return [];
   }
 }
 
