@@ -6,6 +6,12 @@ const { URL_TO_POSTID, POST_INFO, BLOG_IDS } = require("../utils/cache");
 const FILE_REGEX =
   /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;  
 
+const {
+  resolvePlayerUrl,
+  resolveOkEmbed,
+  buildStream
+} = require("../utils/streamResolvers");
+
 /* =========================
    GET POST ID
 ========================= */
@@ -196,77 +202,6 @@ async function getEpisodes(prefix, seriesUrl) {
 }
 
 /* =========================
-   PLAYER RESOLVE
-========================= */
-async function resolvePlayerUrl(playerUrl) {
-  try {
-    const { data } = await axiosClient.get(playerUrl);
-
-    const html = data
-      .replace(/\\\//g, "/")
-      .replace(/&amp;/g, "&");
-
-    const match = html.match(
-      /https?:\/\/phumikhmer\.vip\/player\.php\?stream=[^"'<> ]+/i
-    );
-
-    return match ? match[0] : null;
-  } catch {
-    return null;
-  }
-}
-
-/* =========================
-   RESOLVE OK
-========================= */
-async function resolveOkEmbed(embedUrl) {
-  const { data } = await axiosClient.get(embedUrl, {
-    headers: {
-      "User-Agent": "Mozilla/5.0",
-      Referer: "https://ok.ru/"
-    }
-  });
-
-  // Try both escaped and non-escaped &quot; variants
-  const hlsMatch =
-    data.match(/\\&quot;ondemandHls\\&quot;:\\&quot;(https:\/\/[^"]+?\.m3u8)/) ||
-    data.match(/&quot;ondemandHls&quot;:&quot;(https:\/\/[^"]+?\.m3u8)/);
-
-  if (!hlsMatch) {
-    return null;
-  }
-
-  return hlsMatch[1]
-    .replace(/\\u0026/g, "&")
-    .replace(/\\\//g, "/")
-    .replace(/&amp;/g, "&")
-    .replace(/\\&quot;.*/g, ""); // safety: cut anything after if it appears
-}
-
-
-function buildStream(url, episode) {
-  const isOk = /ok\.ru|okcdn\.ru/i.test(url);
-
-  return {
-    url,
-    name: "KhmerDub",
-    title: `Episode ${episode}`,
-    type: url.includes(".m3u8") ? "hls" : undefined,
-    behaviorHints: isOk
-      ? {
-          group: "khmerdub",
-          proxyHeaders: {
-            request: {
-              Referer: "https://ok.ru/",
-              Origin: "https://ok.ru"
-            }
-          }
-        }
-      : { group: "khmerdub" }
-  };
-}
-
-/* =========================
    STREAM
 ========================= */
 async function getStream(prefix, seriesUrl, episode) {
@@ -318,7 +253,12 @@ async function getStream(prefix, seriesUrl, episode) {
 	  url = resolved;
   }
 
-  return buildStream(url, episode);
+  return buildStream({
+  	  url,
+  	  episode,
+  	  name: "KhmerDub",
+  	  group: "khmerdub"
+  });
 }
 
 /* =========================
