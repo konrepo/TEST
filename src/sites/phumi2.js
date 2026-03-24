@@ -40,12 +40,6 @@ function normalizePhumiPoster(url) {
   );
 }
 
-function cleanSeriesTitle(title) {
-  return (title || "")
-    .replace(/\[\s*\d+\s*(End|EP)?\s*\]/i, "") // remove [30 End]
-    .trim();
-}
-
 function normalizeEpisodeTitle(title, index) {
   if (!title) return `Episode ${index + 1}`;
 
@@ -227,7 +221,7 @@ async function getEpisodes(prefix, seriesUrl) {
 
     return detail.videos.map((v, index) => ({
       id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
-      title: `${cleanSeriesTitle(detail.title)}\nEpisode ${index + 1}`,
+      title: detail.title || v.title || `Episode ${index + 1}`,
       season: 1,
       episode: index + 1,
       thumbnail: detail.thumbnail || "",
