@@ -331,6 +331,7 @@ async function getStream(prefix, seriesUrl, episode) {
   }
 }
 
+
 /* =========================
    GET CATALOG WITH PAGINATION
 ========================= */
@@ -341,7 +342,8 @@ async function getCatalogItems(prefix, siteConfig, url) {
     const BLOGGER_PAGES_PER_BATCH = 3;
 
     for (let i = 0; i < BLOGGER_PAGES_PER_BATCH && currentUrl; i++) {
-      const { data } = await axiosClient.get(currentUrl);
+      const pageUrl = new URL(currentUrl, url).toString();
+      const { data } = await axiosClient.get(pageUrl);
       const $ = cheerio.load(data);
 
       const posts = $("div.blog-posts div.grid-posts article.blog-post").toArray();
@@ -349,27 +351,19 @@ async function getCatalogItems(prefix, siteConfig, url) {
       for (const post of posts) {
         const $el = $(post);
 
-        const a =
-          $el.find("div.post-filter-image a.post-filter-link").first() ||
-          $el.find("a.post-filter-link").first();
-
+        const a = $el.find("div.post-filter-image a.post-filter-link").first();
         const titleEl = $el.find("h2.entry-title").first();
         const imgEl = $el.find("img.snip-thumbnail").first();
 
-        if (!a.length || !titleEl.length) {
-          continue;
-        }
+        if (!a.length || !titleEl.length) continue;
 
         const title =
           titleEl.text().trim() ||
-          titleEl.attr("title") ||
           a.attr("title") ||
           "";
 
         const link = a.attr("href");
-        if (!title || !link) {
-          continue;
-        }
+        if (!title || !link) continue;
 
         let poster =
           imgEl.attr("data-src") ||
@@ -386,11 +380,18 @@ async function getCatalogItems(prefix, siteConfig, url) {
       }
 
       const olderHref = $("a.blog-pager-older-link").attr("href");
-      currentUrl = olderHref || null;
+
+      if (!olderHref) {
+        currentUrl = null;
+        break;
+      }
+
+      currentUrl = new URL(olderHref, pageUrl).toString();
     }
 
     return uniqById(allItems);
-  } catch {
+  } catch (err) {
+    console.error("[phumi2] getCatalogItems error:", err.message);
     return [];
   }
 }
