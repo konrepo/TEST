@@ -40,6 +40,12 @@ function normalizePhumiPoster(url) {
   );
 }
 
+function cleanSeriesTitle(title) {
+  return (title || "")
+    .replace(/\[\s*\d+\s*(End|EP)?\s*\]/i, "") // remove [30 End]
+    .trim();
+}
+
 function normalizeEpisodeTitle(title, index) {
   if (!title) return `Episode ${index + 1}`;
 
