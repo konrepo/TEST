@@ -5,7 +5,7 @@ const sites = [
   { id: "vip", name: "Phumikhmer-test" },
   { id: "sunday", name: "SundayDrama-test" },
   { id: "idrama", name: "iDramaHD-test" },
-  { id: "phumi2", name: "Phumi2-test" },
+  { id: "phumi2", name: "PhumiClub-test" },
   { id: "khmerave", name: "KhmerAve-test" },
   { id: "merlkon", name: "Merlkon-test" },
 ];
