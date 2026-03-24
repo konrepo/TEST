@@ -263,7 +263,7 @@ async function getStream(prefix, seriesUrl, episode) {
       url = resolved;
     }
 
-    return buildStream(url, episode, v.title, "Phumi2", "phumi2");
+    return buildStream(url, episode, v.title, "PhumiClub", "phumi2");
   } catch {
     return null;
   }
