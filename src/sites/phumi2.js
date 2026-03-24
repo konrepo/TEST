@@ -139,6 +139,36 @@ function getPosterFromContent(content) {
   }
 }
 
+function getNextPageUrl(base, html) {
+  const $ = cheerio.load(html);
+
+  const older =
+    $("a.blog-pager-older-link").attr("href") ||
+    $("#Blog1_blog-pager-older-link").attr("href") ||
+    $(".blog-pager-older-link").attr("href") ||
+    $('a[rel="next"]').attr("href") ||
+    "";
+
+  if (older) {
+    return absolutizeUrl(older, base);
+  }
+
+  const articles = $("article.blog-post").toArray();
+  if (!articles.length) return null;
+
+  const last = $(articles[articles.length - 1]);
+
+  const published =
+    last.find('meta[itemprop="datePublished"]').attr("content") ||
+    last.find('time[datetime]').attr("datetime") ||
+    last.find(".published").attr("datetime") ||
+    "";
+
+  if (!published) return null;
+
+  return `${base}/search?updated-max=${encodeURIComponent(published)}&max-results=12`;
+}
+
 /* =========================
    GET POST ID
 ========================= */
@@ -290,7 +320,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
         titleEl.text().trim() ||
         a.text().trim();
 
-      const link = a.attr("href");
+      const link = absolutizeUrl(a.attr("href") || "", url);
       if (!title || !link) return null;
 
       let poster =
@@ -300,13 +330,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
         a.find("img").attr("src") ||
         "";
 
-      poster = normalizePoster(
-        poster
-          .replace(/\/w\d+-h\d+[^/]*\//gi, "/s0/")
-          .replace(/\/s\d+(-c)?\//gi, "/s0/")
-          .replace(/=w\d+-h\d+[^&]*/gi, "=s0")
-          .replace(/=s\d+(-c)?/gi, "=s0")
-      );
+      poster = normalizePhumiPoster(poster);
 
       return {
         id: `${prefix}:${encodeURIComponent(link)}`,
@@ -474,5 +498,6 @@ async function getStream(prefix, seriesUrl, episode) {
 module.exports = {
   getCatalogItems,
   getEpisodes,
-  getStream
+  getStream,
+  getNextPageUrl
 };
