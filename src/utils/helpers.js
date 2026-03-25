@@ -1,9 +1,17 @@
 function normalizePoster(url) {
-  if (!url) return "";
-  return url
-    .replace(/\/s\d+(-[a-z0-9-]+)?\//gi, "/s0/")
-    .replace(/=s\d+(-[a-z0-9-]+)?/gi, "=s0")
-    .replace(/\/w\d+-h\d+[^/]*\//gi, "/s0/");
+  if (!url || typeof url !== "string") return "";
+
+  let u = url.trim();
+
+  if (u.startsWith("//")) {
+    u = "https:" + u;
+  }
+
+  u = u.replace(/^http:/, "https:");
+
+  return u
+    .replace(/\/s\d+\//, "/s0/")
+    .replace(/=s\d+/, "=s0");
 }
 
 const DIRECT_REGEX =
@@ -13,48 +21,83 @@ const OK_REGEX =
   /https?:\/\/ok\.ru\/(?:videoembed|video)\/\d+/gi;
 
 const PLAYER_REGEX =
-  /https?:\/\/phumikhmer\.vip\/player\.php\?(?:id=\d+|stream=[^"'<> ]+)/gi;
+  /https?:\/\/phumikhmer\.vip\/player\.php\?(?:id|stream)=[^"'\s<>]+/gi;
 
 const FILE_REGEX =
   /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
 
+function extractEpisodeNumber(url, index = 0, maxEp = null) {
+  if (!url || typeof url !== "string") return index + 1;
+
+  const patterns = [
+    /[?&](?:episode|ep)=(\d{1,4})(?:\D|$)/i,
+    /(?:episode|ep)[^\d]{0,3}(\d{1,4})(?:\D|$)/i,
+    /(?:^|[\/_.-])e(\d{1,4})(?:\D|$)/i,
+    /(?:^|[\/_.-])(\d{1,4})(?:\.m3u8|\.mp4)(?:\?|$)/i,
+    /-(\d{1,4})(?:\D|$)/i
+  ];
+
+  for (const re of patterns) {
+    const m = url.match(re);
+    if (!m) continue;
+
+    const ep = parseInt(m[1], 10);
+    if (!Number.isFinite(ep) || ep <= 0) continue;
+
+    if (maxEp && ep > maxEp) continue;
+    if (!maxEp && ep > 500) continue;
+
+    return ep;
+  }
+
+  return index + 1;
+}
+
+function isProbablyVideoUrl(url) {
+  if (!url || typeof url !== "string") return false;
+
+  return (
+    /\.m3u8(\?|$)/i.test(url) ||
+    /\.mp4(\?|$)/i.test(url) ||
+    /ok\.ru\/videoembed\//i.test(url) ||
+    /phumikhmer\.vip\/player\.php\?(?:id|stream)=/i.test(url) ||
+    /sooplive\.co\.kr/i.test(url)
+  );
+}
+
 function extractVideoLinks(text) {
   if (!text) return [];
-
-  const directMatches = text.match(DIRECT_REGEX) || [];
-
-  const okMatches = (text.match(OK_REGEX) || []).map((u) =>
-    u.replace("/video/", "/videoembed/")
-  );
-
+  const directMatches = text.match(DIRECT_REGEX) || [];  
+  const okMatches = (text.match(OK_REGEX) || [])
+    .map(u => u.replace("/video/", "/videoembed/"));
   const playerMatches = text.match(PLAYER_REGEX) || [];
-
+  
   FILE_REGEX.lastIndex = 0;
+
   const fileMatches = [];
   let match;
-
   while ((match = FILE_REGEX.exec(text)) !== null) {
     fileMatches.push(match[1]);
   }
 
-  return Array.from(
-    new Set([
-      ...directMatches,
-      ...okMatches,
-      ...playerMatches,
-      ...fileMatches
-    ])
-  );
+  return Array.from(new Set([
+    ...directMatches,
+    ...okMatches,
+    ...playerMatches,
+    ...fileMatches
+  ]))
+    .map(u => u.trim())
+    .filter(isProbablyVideoUrl);
 }
 
 function extractMaxEpFromTitle(title) {
   if (!title) return null;
 
   const match =
-    title.match(/\bEP\.?\s*(\d+)\b/i) ||
-    title.match(/\bEpisode\s*(\d+)\b/i) ||
-    title.match(/\[EP\.?\s*(\d+)\]/i) ||
-    title.match(/\[(\d+)\s*(?:End|EP)\]/i);
+    title.match(/\[(?:EP\s*)?(\d+)\s*END\]/i) ||
+    title.match(/\[(?:EP\s*)?(\d+)\]/i) ||
+    title.match(/\bEP\.?\s*-?\s*(\d+)\b/i) ||
+    title.match(/\bEpisode\s*-?\s*(\d+)\b/i);
 
   return match ? parseInt(match[1], 10) : null;
 }
@@ -62,6 +105,7 @@ function extractMaxEpFromTitle(title) {
 function extractOkIds(text) {
   if (!text) return [];
 
+  // matches long numeric ids followed by semicolon or newline
   const idRegex = /(^|[\s;])(\d{10,})(?=\s*;|\s|$)/g;
 
   const ids = [];
@@ -78,17 +122,19 @@ function mapMetas(items, type = "series") {
     id: item.id,
     type,
     name: item.name,
-    poster: item.poster,
+    poster: item.poster || "",
     posterShape: "poster"
   }));
 }
 
 function uniqById(items) {
-  return [...new Map(items.map((item) => [item.id, item])).values()];
+  return [...new Map(items.map(item => [item.id, item])).values()];
 }
 
 module.exports = {
   normalizePoster,
+  extractEpisodeNumber,
+  isProbablyVideoUrl,
   extractVideoLinks,
   extractMaxEpFromTitle,
   extractOkIds,

@@ -2,12 +2,12 @@ const TYPE = "series";
 const EXTRA = ["search", "skip"];
 
 const sites = [
-  { id: "vip", name: "Phumikhmer-test" },
+  { id: "vip", name: "PhumiVip-test" },
   { id: "sunday", name: "SundayDrama-test" },
-  { id: "idrama", name: "iDramaHD-test" },
-  { id: "phumi2", name: "PhumiClub-test" },
+  { id: "phumi2", name: "PhumiClub-test" },  
   { id: "khmerave", name: "KhmerAve-test" },
   { id: "merlkon", name: "Merlkon-test" },
+  { id: "idrama", name: "iDramaHD-test" },
 ];
 
 module.exports = {
@@ -19,15 +19,17 @@ module.exports = {
 
   resources: ["catalog", "meta", "stream"],
   types: [TYPE],
+  idPrefixes: sites.map(s => s.id),
 
-  catalogs: sites.map(site => ({
+  catalogs: sites.map((site) => ({
     type: TYPE,
     id: site.id,
     name: site.name,
-    extraSupported: EXTRA
+    extraSupported: EXTRA,
   })),
 
   behaviorHints: {
-    configurable: false
-  }
+    configurable: false,
+    adult: false,
+  },
 };

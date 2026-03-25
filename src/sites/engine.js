@@ -4,10 +4,13 @@ const { URL_TO_POSTID, POST_INFO, BLOG_IDS } = require("../utils/cache");
 const { 
   normalizePoster, 
   extractVideoLinks, 
+  extractEpisodeNumber, 
+  isProbablyVideoUrl, 
   extractMaxEpFromTitle, 
   extractOkIds, 
-  uniqById
+  uniqById 
 } = require("../utils/helpers");
+
 
 const FILE_REGEX =
   /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;  
@@ -99,7 +102,7 @@ async function fetchFromBlog(blogId, postId) {
 
     thumbnail = normalizePoster(thumbnail);
 
-    let urls = extractVideoLinks(content);
+    let urls = extractVideoLinks(content).filter(isProbablyVideoUrl);
 
     // If blogger post stores OK.ru IDs (like: 9488...; 9488...; {embed=ok})
     if (!urls.length) {
@@ -107,7 +110,9 @@ async function fetchFromBlog(blogId, postId) {
       const okIds = extractOkIds(content);
 
       if (hasOkEmbed && okIds.length) {
-		urls = okIds.map(id => `https://ok.ru/videoembed/${id}`);
+		urls = okIds
+		  .map(id => `https://ok.ru/videoembed/${id}`)
+		  .filter(isProbablyVideoUrl);
       }
     }
 
@@ -149,7 +154,7 @@ async function getEpisodes(prefix, seriesUrl) {
   const postId = await getPostId(seriesUrl);
 
   // Sunday playlist
-  if (!postId && prefix === "sunday") {  
+  if (!postId && prefix === "sunday") {
     const { data } = await axiosClient.get(seriesUrl);
 
     FILE_REGEX.lastIndex = 0;
@@ -161,105 +166,172 @@ async function getEpisodes(prefix, seriesUrl) {
       urls.push(match[1]);
     }
 
-    const $ = cheerio.load(data);	
+    const uniqueUrls = [...new Set(urls)].filter(isProbablyVideoUrl);
+    if (!uniqueUrls.length) return [];
+
+    const $ = cheerio.load(data);
     const pagePoster =
       $("meta[property='og:image']").attr("content") ||
       $("link[rel='image_src']").attr("href") ||
       "";
 
-    const normalizedPoster = normalizePoster(pagePoster);
+    const normalizedPoster = normalizePoster(pagePoster || "");
 
-    return urls.map((url, index) => ({
-      id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
-      title: `Episode ${index + 1}`,
-      season: 1,
-      episode: index + 1,
-      thumbnail: normalizedPoster,
-      released: new Date().toISOString(),
-    }));
+    const episodes = [];
+    const seen = new Set();
+
+    for (let i = 0; i < uniqueUrls.length; i++) {
+      const url = uniqueUrls[i];
+      const epNum = extractEpisodeNumber(url, i);
+
+      if (seen.has(epNum)) continue;
+      seen.add(epNum);
+
+      episodes.push({
+        id: epNum,
+        url,
+        title: `Episode ${epNum}`,
+        season: 1,
+        episode: epNum,
+        thumbnail: normalizedPoster,
+        released: new Date().toISOString(),
+        behaviorHints: {
+          group: `${prefix}:${encodeURIComponent(seriesUrl)}`
+        }
+      });
+    }
+
+    episodes.sort((a, b) => a.episode - b.episode);
+    return episodes;
   }
 
-  if (!postId) {
-    return [];
-  }
+  // =========================
+  // No postId
+  // =========================
+  if (!postId) return [];
 
   const detail = await getStreamDetail(postId);
+  if (!detail) return [];
 
-  if (!detail) {
-    return [];
+  // =========================
+  // Get max episode
+  // =========================
+  let maxEp = POST_INFO.get(postId)?.maxEp || null;
+
+  console.log("MAX EP DEBUG:", {
+    postId,
+    stored: POST_INFO.get(postId),
+    maxEp
+  });
+
+  // fallback from title
+  if (!maxEp && detail?.title) {
+    const extracted = extractMaxEpFromTitle(detail.title);
+    if (extracted) {
+      maxEp = extracted;
+
+      POST_INFO.set(postId, {
+        ...(POST_INFO.get(postId) || {}),
+        maxEp
+      });
+    }
   }
 
-  const maxEp = POST_INFO.get(postId)?.maxEp || null;
+  let episodes = [];
 
-  let urls = [...new Set(detail.urls)];
+  // =========================
+  // VIP / iDrama
+  // =========================
+  if (prefix === "vip" || prefix === "idrama") {
+    const seen = new Set();
 
-  if (maxEp && urls.length > maxEp) {
-    urls = urls.slice(0, maxEp);
+    for (let i = 0; i < detail.urls.length; i++) {
+      const url = detail.urls[i];
+      const ep = extractEpisodeNumber(url, i, maxEp);
+
+      if (seen.has(ep)) continue;
+      seen.add(ep);
+
+      episodes.push({ url, ep });
+    }
+
+    episodes.sort((a, b) => a.ep - b.ep);
+
+    if (maxEp) {
+      episodes = episodes.filter(item => item.ep <= maxEp);
+    }
   }
 
-  return urls.map((url, index) => ({
-    id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
+  // =========================
+  // KhmerAve / others
+  // =========================
+  else {
+    const seen = new Set();
+
+    for (let i = 0; i < detail.urls.length; i++) {
+      const url = detail.urls[i];
+      const ep = extractEpisodeNumber(url, i, maxEp);
+
+      if (seen.has(ep)) continue;
+      seen.add(ep);
+
+      episodes.push({ url, ep });
+    }
+
+    episodes.sort((a, b) => a.ep - b.ep);
+
+    if (maxEp) {
+      episodes = episodes.filter(item => item.ep <= maxEp);
+    }
+  }
+
+  console.log("FINAL MAX EP:", maxEp);
+  console.log("FINAL EP COUNT:", episodes.length);
+
+  return episodes.map(({ url, ep }) => ({
+    id: ep,
+    url,
     title: detail.title,
     season: 1,
-    episode: index + 1,
+    episode: ep,
     thumbnail: detail.thumbnail,
     released: new Date().toISOString(),
+    behaviorHints: {
+      group: `${prefix}:${encodeURIComponent(seriesUrl)}`
+    }
   }));
 }
 
 /* =========================
    STREAM
 ========================= */
-async function getStream(prefix, seriesUrl, episode) {
-  const postId = await getPostId(seriesUrl);
-  // Sunday fallback streaming
-  if (prefix === "sunday" && !postId) {
+async function getStream(prefix, episodeUrl, episode) {
 
-    const { data } = await axiosClient.get(seriesUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        Referer: seriesUrl
-      }
-    });
-
-    const links = extractVideoLinks(data);
-    const url = links[episode - 1];
-    if (!url) return null;
-
-    return buildStream(url, episode);
+  // Sunday URL
+  if (prefix === "sunday") {
+    const stream = buildStream(episodeUrl, episode);
+    return stream;
   }
 
-  if (!postId) return null;
+  // Other sites
+  let url = episodeUrl;
 
-  const detail = await getStreamDetail(postId);
-  if (!detail) {
-	return null;
-  }
-
-  let url = detail.urls[episode - 1];
-  if (!url) {
-	return null;
-  }
-
-  // Resolve player.php first
+  // Resolve player.php
   if (url.includes("player.php")) {
-	  const resolved = await resolvePlayerUrl(url);
-	  if (!resolved) {
-		return null;
-	  }
-	  url = resolved;
+    const resolved = await resolvePlayerUrl(url);
+    if (!resolved) return null;
+    url = resolved;
   }
 
-  // Resolve OK embed page
+  // Resolve OK embed
   if (url.includes("ok.ru/videoembed/")) {
-	  const resolved = await resolveOkEmbed(url);
-	  if (!resolved) {
-		return null;
-	  }
-	  url = resolved;
+    const resolved = await resolveOkEmbed(url);
+    if (!resolved) return null;
+    url = resolved;
   }
 
-  return buildStream(url, episode);
+  const stream = buildStream(url, episode);
+  return stream;
 }
 
 /* =========================
@@ -267,7 +339,6 @@ async function getStream(prefix, seriesUrl, episode) {
 ========================= */
 async function getCatalogItems(prefix, siteConfig, url) {
   try {
-
     // === Sunday Blogger Pagination Support ===
     if (prefix === "sunday") {
       const allItems = [];
@@ -282,28 +353,44 @@ async function getCatalogItems(prefix, siteConfig, url) {
 
         for (const el of articles) {
           const $el = $$(el);
-          const a = $el.find(siteConfig.titleSelector).first();
+          const $titleEl = $el.find(siteConfig.titleSelector).first();
+          const $posterEl = $el.find(siteConfig.posterSelector).first();
 
           const title =
-            a.attr("title")?.trim() ||
-            a.text().trim();
+            $titleEl.text().trim() ||
+            $titleEl.attr("title")?.trim() ||
+            $posterEl.attr("title")?.trim() ||
+            $posterEl.attr("alt")?.trim() ||
+            $el.find("img").first().attr("alt")?.trim() ||
+            "";
 
-          const link = a.attr("href");
+          const link =
+            $titleEl.attr("href") ||
+            $posterEl.attr("href") ||
+            $posterEl.closest("a").attr("href") ||
+            $el.find("a").first().attr("href") ||
+            "";
+
           if (!title || !link) continue;
 
           let poster = "";
-          const posterEl = $el.find(siteConfig.posterSelector).first();
-          for (const attr of siteConfig.posterAttrs) {
-            poster = posterEl.attr(attr) || poster;
+          for (const attr of siteConfig.posterAttrs || []) {
+            poster = $posterEl.attr(attr) || poster;
             if (poster) break;
           }
 
-          const normalizedPoster = normalizePoster(poster);
+          if (!poster) {
+            const $img = $el.find("img").first();
+            for (const attr of ["data-src", "data-lazy-src", "src"]) {
+              poster = $img.attr(attr) || poster;
+              if (poster) break;
+            }
+          }
 
           allItems.push({
-            id: `${prefix}:${encodeURIComponent(link)}`,
+            id: link.trim(),
             name: title,
-            poster: normalizedPoster,
+            poster: normalizePoster(poster),
           });
         }
 
@@ -321,31 +408,50 @@ async function getCatalogItems(prefix, siteConfig, url) {
 
     const results = articles.map((el) => {
       const $el = $(el);
-      const a = $el.find(siteConfig.titleSelector).first();
+      const $titleEl = $el.find(siteConfig.titleSelector).first();
+      const $posterEl = $el.find(siteConfig.posterSelector).first();
 
-      const title = a.text().trim();
-      const link = a.attr("href");
+      const title =
+        $titleEl.text().trim() ||
+        $titleEl.attr("title")?.trim() ||
+        $posterEl.attr("title")?.trim() ||
+        $posterEl.attr("alt")?.trim() ||
+        $el.find("img").first().attr("alt")?.trim() ||
+        "";
+
+      const link =
+        $titleEl.attr("href") ||
+        $posterEl.attr("href") ||
+        $posterEl.closest("a").attr("href") ||
+        $el.find("a").first().attr("href") ||
+        "";
+
       if (!title || !link) return null;
 
       let poster = "";
-      const posterEl = $el.find(siteConfig.posterSelector).first();
-      for (const attr of siteConfig.posterAttrs) {
-        poster = posterEl.attr(attr) || poster;
+      for (const attr of siteConfig.posterAttrs || []) {
+        poster = $posterEl.attr(attr) || poster;
         if (poster) break;
       }
 
-      const normalizedPoster = normalizePoster(poster);
+      if (!poster) {
+        const $img = $el.find("img").first();
+        for (const attr of ["data-src", "data-lazy-src", "src"]) {
+          poster = $img.attr(attr) || poster;
+          if (poster) break;
+        }
+      }
 
       return {
-        id: `${prefix}:${encodeURIComponent(link)}`,
+        id: link.trim(),
         name: title,
-        poster: normalizedPoster,
+        poster: normalizePoster(poster),
       };
     });
 
-    return results.filter(Boolean);
-
-  } catch {
+    return uniqById(results.filter(Boolean));
+  } catch (err) {
+    console.error("getCatalogItems error:", prefix, url, err.message);
     return [];
   }
 }
