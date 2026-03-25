@@ -91,19 +91,20 @@ function getNextPageUrl(base, html) {
 }
 
 function parseVideosArray(html) {
-  if (!html) return [];
-
   try {
     const match =
       html.match(/const\s+videos\s*=\s*(\[[\s\S]*?\]);\s*<\/script>/i) ||
       html.match(/const\s+videos\s*=\s*(\[[\s\S]*?\]);/i) ||
       html.match(/let\s+videos\s*=\s*(\[[\s\S]*?\]);/i) ||
-      html.match(/var\s+videos\s*=\s*(\[[\s\S]*?\]);/i) ||
-      html.match(/window\.videos\s*=\s*(\[[\s\S]*?\]);/i);
+      html.match(/var\s+videos\s*=\s*(\[[\s\S]*?\]);/i);
+
+    console.log("PHUMI2 parseVideosArray MATCH FOUND:", !!match);
 
     if (!match || !match[1]) return [];
 
     let raw = match[1].trim();
+
+    console.log("PHUMI2 RAW:", raw.slice(0, 200));
 
     raw = raw
       .replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g, '$1"$2":')
@@ -112,7 +113,8 @@ function parseVideosArray(html) {
       .replace(/,\s*}/g, "}");
 
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
+
+    console.log("PHUMI2 PARSED LENGTH:", parsed.length);
 
     return parsed
       .map((item, index) => ({
@@ -120,15 +122,16 @@ function parseVideosArray(html) {
         file: String(item?.file || "").trim()
       }))
       .filter((item) => item.file);
+
   } catch (err) {
-    console.error("phumi2 parseVideosArray error:", err.message);
+    console.error("PHUMI2 parseVideosArray ERROR:", err.message);
     return [];
   }
 }
 
 async function getPageDetail(url) {
   try {
-    if (!url || !/^https?:\/\//i.test(url)) return null;
+    console.log("PHUMI2 getPageDetail URL:", url);
 
     const { data } = await axiosClient.get(url, {
       headers: {
@@ -137,7 +140,19 @@ async function getPageDetail(url) {
       }
     });
 
+    console.log("PHUMI2 HTML LENGTH:", data?.length || 0);
+
     const html = String(data || "");
+
+    const videos = parseVideosArray(html);
+
+    console.log("PHUMI2 VIDEOS PARSED:", videos.length);
+
+    if (!videos.length) {
+      console.log("PHUMI2: FAILED TO PARSE VIDEOS");
+      return null;
+    }
+
     const $ = cheerio.load(html);
 
     const title =
@@ -154,16 +169,14 @@ async function getPageDetail(url) {
 
     thumbnail = normalizePhumiPoster(thumbnail);
 
-    const videos = parseVideosArray(html);
-    if (!videos.length) return null;
-
     return {
       title,
       thumbnail,
       videos
     };
+
   } catch (err) {
-    console.error("phumi2 getPageDetail error:", err.message);
+    console.error("PHUMI2 getPageDetail ERROR:", err.message);
     return null;
   }
 }
@@ -230,10 +243,24 @@ async function getCatalogItems(prefix, siteConfig, url) {
 ========================= */
 async function getEpisodes(prefix, seriesUrl) {
   try {
-    const detail = await getPageDetail(seriesUrl);
-    if (!detail?.videos?.length) return [];
+    console.log("PHUMI2 getEpisodes START:", {
+      prefix,
+      seriesUrl
+    });
 
-    return detail.videos.map((v, index) => ({
+    const detail = await getPageDetail(seriesUrl);
+
+    console.log("PHUMI2 getEpisodes DETAIL:", {
+      hasDetail: !!detail,
+      videoCount: detail?.videos?.length || 0
+    });
+
+    if (!detail?.videos?.length) {
+      console.log("PHUMI2 getEpisodes: NO VIDEOS FOUND");
+      return [];
+    }
+
+    const episodes = detail.videos.map((v, index) => ({
       id: index + 1,
       url: seriesUrl,
       title: detail.title || `Episode ${index + 1}`,
@@ -245,8 +272,13 @@ async function getEpisodes(prefix, seriesUrl) {
         group: `${prefix}:${encodeURIComponent(seriesUrl)}`
       }
     }));
+
+    console.log("PHUMI2 getEpisodes SUCCESS:", episodes.length);
+
+    return episodes;
+
   } catch (err) {
-    console.error("phumi2 getEpisodes error:", err.message);
+    console.error("PHUMI2 getEpisodes ERROR:", err.message);
     return [];
   }
 }
