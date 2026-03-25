@@ -67,6 +67,11 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 	}  
 	
 	const ctx = getSiteEngine(id);
+	console.log("CATALOG HANDLER DEBUG:", {
+	  id,
+	  extra
+	});
+	
     if (!ctx) return { metas: [] };
 
     const { site, engine: siteEngine } = ctx;
@@ -216,6 +221,12 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 
     // Phumi2 (Blogger): search + paging
     if (id === "phumi2") {
+      console.log("PHUMI2 CATALOG RESULT:", {
+        count: fixed.length,
+        firstMeta: fixed[0]?.id || null,
+        firstUrl: fixed[0] || null
+      });
+	
       const base = String(site.baseUrl || "").replace(/\/$/, "");
 
       const startUrl = extra?.search
@@ -373,6 +384,10 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 builder.defineMetaHandler(async ({ id }) => {
   try {
     const prefix = id.split(":")[0];
+    console.log("META HANDLER DEBUG:", {
+      id,
+      prefix
+    });
 
     const ctx = getSiteEngine(prefix);
     if (!ctx) return { meta: null };
@@ -380,15 +395,29 @@ builder.defineMetaHandler(async ({ id }) => {
     const { site, engine: siteEngine } = ctx;
 
     const seriesUrl = URL_CACHE.get(id);
+	console.log("META SERIES URL DEBUG:", {
+	  id,
+	  prefix,
+	  seriesUrl
+	});
+	
     if (!seriesUrl) return { meta: null };
 
     let episodes;
 
+	
     if (prefix === "khmerave" || prefix === "merlkon") {
       episodes = await khmerave.getEpisodes(prefix, seriesUrl);
     } else {
       episodes = await siteEngine.getEpisodes(prefix, seriesUrl);
     }
+	
+    console.log("META EPISODES RESULT:", {
+	  prefix,
+	  count: episodes?.length || 0,
+	  firstEpisode: episodes?.[0] || null
+	});
+	
     if (!episodes.length) return { meta: null };
 
     // normalize order
@@ -452,6 +481,13 @@ builder.defineStreamHandler(async ({ id }) => {
     }
 
     const prefix = metaId.split(":")[0];
+	
+	console.log("STREAM HANDLER DEBUG:", {
+	  id,
+	  metaId,
+	  prefix,
+	  episode: epNum
+	});
 
     const ctx = getSiteEngine(prefix);
     if (!ctx) return { streams: [] };
@@ -459,6 +495,13 @@ builder.defineStreamHandler(async ({ id }) => {
     const { site, engine: siteEngine } = ctx;
 
     const seriesUrl = URL_CACHE.get(metaId);
+	
+	console.log("STREAM SERIES URL DEBUG:", {
+	  metaId,
+	  prefix,
+	  seriesUrl
+	});
+	
     if (!seriesUrl) return { streams: [] };
 
     // =========================
@@ -489,6 +532,13 @@ builder.defineStreamHandler(async ({ id }) => {
     }
 
     let ep = episodes.find(e => e.episode === epNum);
+	console.log("STREAM EP MATCH DEBUG:", {
+	  prefix,
+	  epNum,
+	  episodesCount: episodes?.length || 0,
+	  matchedEpisode: ep || null
+	});
+	
     if (!ep && epNum - 1 >= 0 && epNum - 1 < episodes.length) {
 	  ep = episodes[epNum - 1];
     }
