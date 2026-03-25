@@ -205,7 +205,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
       poster = normalizePhumiPoster(poster);
 
       return {
-        id: link,
+        id: `${prefix}:${encodeURIComponent(link)}`,
         name: title,
         poster
       };
@@ -227,6 +227,7 @@ async function getEpisodes(prefix, seriesUrl) {
 
     return detail.videos.map((v, index) => ({
       id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
+      url: seriesUrl,
       title: detail.title || v.title || `Episode ${index + 1}`,
       season: 1,
       episode: index + 1,
@@ -243,6 +244,8 @@ async function getEpisodes(prefix, seriesUrl) {
 ========================= */
 async function getStream(prefix, seriesUrl, episode) {
   try {
+    if (!seriesUrl) return null;
+
     const detail = await getPageDetail(seriesUrl);
     if (!detail?.videos?.length) return null;
 
