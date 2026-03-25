@@ -218,11 +218,11 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 
       const WEBSITE_PAGE_SIZE = site.pageSize || 12;
       const PAGES_PER_BATCH = 3;
-      const SKIP_STEP = WEBSITE_PAGE_SIZE * PAGES_PER_BATCH;
 
       const skip = Number(extra?.skip || 0);
+	  const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
       const startPage =
-        Math.floor(skip / SKIP_STEP) *
+        Math.floor((targetPage - 1) / PAGES_PER_BATCH) *
           PAGES_PER_BATCH +
         1;
 
