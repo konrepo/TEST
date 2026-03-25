@@ -144,6 +144,42 @@ function parseVideosArray(html) {
   }
 }
 
+async function fetchWithRetry(url, headers, retries = 3) {
+  let lastErr;
+
+  for (let i = 0; i < retries; i++) {
+    try {
+      const retryHeaders = {
+        ...headers,
+        Referer: i === 0
+          ? "https://www.phumikhmer1.club/"
+          : url
+      };
+
+      const res = await axiosClient.get(url, { headers: retryHeaders });
+      return res.data;
+    } catch (err) {
+      lastErr = err;
+
+      const status = err.response?.status || 0;
+      console.log("PHUMI2 FETCH RETRY:", {
+        attempt: i + 1,
+        status,
+        url
+      });
+
+      if (status !== 429 && status !== 403 && status !== 503) {
+        throw err;
+      }
+
+      const waitMs = 1500 * (i + 1);
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+  }
+
+  throw lastErr;
+}
+
 async function getPageDetail(url) {
   try {
     const cached = getCachedDetail(url);
@@ -154,39 +190,14 @@ async function getPageDetail(url) {
 
     console.log("PHUMI2 getPageDetail URL:", url);
 
-    let data;
-
-    try {
-      const res = await axiosClient.get(url, {
-        headers: {
-          ...PAGE_HEADERS,
-          Referer: url
-        }
-      });
-      data = res.data;
-    } catch (err) {
-      if (err.response?.status === 429) {
-        console.log("PHUMI2 429 RETRY:", url);
-
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-
-        const retryRes = await axiosClient.get(url, {
-          headers: {
-            ...PAGE_HEADERS,
-            Referer: url
-          }
-        });
-
-        data = retryRes.data;
-      } else {
-        throw err;
-      }
-    }
+    const data = await fetchWithRetry(url, {
+      ...PAGE_HEADERS,
+      Referer: "https://www.phumikhmer1.club/"
+    });
 
     console.log("PHUMI2 HTML LENGTH:", data?.length || 0);
 
     const html = String(data || "");
-
     const videos = parseVideosArray(html);
 
     console.log("PHUMI2 VIDEOS PARSED:", videos.length);
