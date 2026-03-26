@@ -381,67 +381,6 @@ async function getStream(prefix, episodeUrl, episode) {
 ========================= */
 async function getCatalogItems(prefix, siteConfig, url) {
   try {
-    if (prefix === "sunday") {
-      const allItems = [];
-      let currentUrl = url;
-      const BLOGGER_PAGES_PER_BATCH = 3;
-
-      for (let i = 0; i < BLOGGER_PAGES_PER_BATCH && currentUrl; i++) {
-        const { data: pageData } = await axiosClient.get(currentUrl);
-        const $$ = cheerio.load(pageData);
-
-        const articles = $$(siteConfig.articleSelector).toArray();
-
-        for (const el of articles) {
-          const $el = $$(el);
-          const $titleEl = $el.find(siteConfig.titleSelector).first();
-          const $posterEl = $el.find(siteConfig.posterSelector).first();
-
-          const title =
-            $titleEl.text().trim() ||
-            $titleEl.attr("title")?.trim() ||
-            $posterEl.attr("title")?.trim() ||
-            $posterEl.attr("alt")?.trim() ||
-            $el.find("img").first().attr("alt")?.trim() ||
-            "";
-
-          const link =
-            $titleEl.attr("href") ||
-            $posterEl.attr("href") ||
-            $posterEl.closest("a").attr("href") ||
-            $el.find("a").first().attr("href") ||
-            "";
-
-          if (!title || !link) continue;
-
-          let poster = "";
-          for (const attr of siteConfig.posterAttrs || []) {
-            poster = $posterEl.attr(attr) || poster;
-            if (poster) break;
-          }
-
-          if (!poster) {
-            const $img = $el.find("img").first();
-            for (const attr of ["data-src", "data-lazy-src", "src"]) {
-              poster = $img.attr(attr) || poster;
-              if (poster) break;
-            }
-          }
-
-          allItems.push({
-            id: link.trim(),
-            name: title,
-            poster: normalizePoster(poster)
-          });
-        }
-
-        const older = $$("a.blog-pager-older-link").attr("href");
-        currentUrl = older || null;
-      }
-
-      return uniqById(allItems);
-    }
-
     const { data } = await axiosClient.get(url);
     const $ = cheerio.load(data);
 
