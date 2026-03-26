@@ -54,15 +54,25 @@ async function resolveOkEmbed(embedUrl) {
 /* =========================
    BUILD STREAM
 ========================= */
-function buildStream(url, episode, title, name = "KhmerDub", group = "khmerdub") {
-  const isOk = /ok\.ru|okcdn\.ru/i.test(url);
+function buildStream(
+  url,
+  episode,
+  title,
+  name = "KhmerDub",
+  group = "khmerdub",
+  options = {}
+) {
+  const { forceProxyHeaders = false } = options;
+
+  const needsOkHeaders =
+    forceProxyHeaders || /ok\.ru|okcdn\.ru/i.test(url);
 
   return {
     url,
     name,
     title: title || `Episode ${episode}`,
-    type: url.includes(".m3u8") ? "hls" : undefined,
-    behaviorHints: isOk
+    type: /\.m3u8(\?|$)/i.test(url) ? "hls" : undefined,
+    behaviorHints: needsOkHeaders
       ? {
           group,
           proxyHeaders: {
