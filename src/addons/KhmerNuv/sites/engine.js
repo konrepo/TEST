@@ -708,19 +708,14 @@ async function getStream(prefix, episodeUrl, episode) {
     episodeUrl
   });
 
-  if (!url || typeof url !== "string") {
-    console.log("[getStream] invalid url:", url);
-    return null;
-  }
+  if (!url || typeof url !== "string") return null;
 
   url = url.trim().replace(/;+$/, "");
   console.log("[getStream] trimmed url:", url);
 
   if (url.includes("player.php")) {
     console.log("[getStream] resolving player.php:", url);
-
     const resolved = await resolvePlayerUrl(url);
-
     console.log("[getStream] resolvePlayerUrl result:", resolved);
 
     if (!resolved) {
@@ -733,9 +728,7 @@ async function getStream(prefix, episodeUrl, episode) {
 
   if (url.includes("ok.ru/videoembed/")) {
     console.log("[getStream] resolving ok.ru:", url);
-
     const resolved = await resolveOkEmbed(url);
-
     console.log("[getStream] resolveOkEmbed result:", resolved);
 
     if (!resolved) {
