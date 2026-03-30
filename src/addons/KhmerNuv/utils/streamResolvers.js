@@ -174,7 +174,13 @@ function buildStream(
   const { forceProxyHeaders = false } = options;
 
   const needsOkHeaders =
-    forceProxyHeaders || /ok\.ru|okcdn\.ru/i.test(url);
+    forceProxyHeaders || /ok\.ru|okcdn\.ru|vkuser\.net/i.test(url);
+
+  console.log("[buildStream]", {
+    url,
+    needsOkHeaders,
+    type: /\.m3u8(\?|$)/i.test(url) ? "hls" : "mp4/other"
+  });
 
   return {
     url,
