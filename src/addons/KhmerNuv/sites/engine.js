@@ -23,6 +23,27 @@ const DEBUG = false;
 /* =========================
    VIP SEARCH HELPERS
 ========================= */
+function extractCurrentEpFromTitle(title = "") {
+  if (!title) return null;
+
+  const patterns = [
+    /\[\s*EP\.?\s*(\d+)\s*(?:END)?\s*\]/i,
+    /\[\s*Episode\s*(\d+)\s*(?:END)?\s*\]/i,
+    /\bEP\.?\s*(\d+)\b/i,
+    /\bEpisode\s*(\d+)\b/i
+  ];
+
+  for (const re of patterns) {
+    const m = title.match(re);
+    if (!m) continue;
+
+    const ep = parseInt(m[1], 10);
+    if (Number.isFinite(ep) && ep > 0) return ep;
+  }
+
+  return null;
+}
+
 function normalizeSearchText(text = "") {
   return text
     .toLowerCase()
@@ -465,9 +486,13 @@ function buildEpisodesFromUrls({
   const seen = new Set();
   let episodes = [];
 
+  const titleEpisode =
+    urls.length === 1 ? extractCurrentEpFromTitle(title) : null;
+
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
-    const ep = extractEpisodeNumber(url, i, maxEp);
+
+    const ep = titleEpisode || extractEpisodeNumber(url, i, maxEp);
 
     if (!Number.isFinite(ep) || ep <= 0) continue;
     if (seen.has(ep)) continue;
