@@ -713,7 +713,7 @@ async function getStream(prefix, episodeUrl, episode) {
     return null;
   }
 
-  url = url.trim();
+  url = url.trim().replace(/;+$/, "");
   console.log("[getStream] trimmed url:", url);
 
   if (url.includes("player.php")) {
