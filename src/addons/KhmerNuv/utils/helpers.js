@@ -10,8 +10,9 @@ function normalizePoster(url) {
   u = u.replace(/^http:/, "https:");
 
   return u
-    .replace(/\/s\d+\//, "/s0/")
-    .replace(/=s\d+/, "=s0");
+    .replace(/\/s\d+(-[a-z0-9-]+)?\//gi, "/s0/")
+    .replace(/=s\d+(-[a-z0-9-]+)?/gi, "=s0")
+    .replace(/\/w\d+-h\d+[^/]*\//gi, "/s0/");
 }
 
 const DIRECT_REGEX =
@@ -61,17 +62,20 @@ function isProbablyVideoUrl(url) {
     /\.mp4(\?|$)/i.test(url) ||
     /ok\.ru\/videoembed\//i.test(url) ||
     /phumikhmer\.vip\/player\.php\?(?:id|stream)=/i.test(url) ||
-    /sooplive\.co\.kr/i.test(url)
+    /sooplive\.co\.kr/i.test(url) ||
+    /dailymotion\.com\/embed\/video\//i.test(url) ||
+    /drive\.google\.com\/file\/d\//i.test(url)
   );
 }
 
 function extractVideoLinks(text) {
   if (!text) return [];
-  const directMatches = text.match(DIRECT_REGEX) || [];  
+
+  const directMatches = text.match(DIRECT_REGEX) || [];
   const okMatches = (text.match(OK_REGEX) || [])
-    .map(u => u.replace("/video/", "/videoembed/"));
+    .map((u) => u.replace("/video/", "/videoembed/"));
   const playerMatches = text.match(PLAYER_REGEX) || [];
-  
+
   FILE_REGEX.lastIndex = 0;
 
   const fileMatches = [];
@@ -86,7 +90,7 @@ function extractVideoLinks(text) {
     ...playerMatches,
     ...fileMatches
   ]))
-    .map(u => u.trim())
+    .map((u) => u.trim())
     .filter(isProbablyVideoUrl);
 }
 
@@ -105,7 +109,6 @@ function extractMaxEpFromTitle(title) {
 function extractOkIds(text) {
   if (!text) return [];
 
-  // matches long numeric ids followed by semicolon or newline
   const idRegex = /(^|[\s;])(\d{10,})(?=\s*;|\s|$)/g;
 
   const ids = [];
@@ -128,7 +131,7 @@ function mapMetas(items, type = "series") {
 }
 
 function uniqById(items) {
-  return [...new Map(items.map(item => [item.id, item])).values()];
+  return [...new Map(items.map((item) => [item.id, item])).values()];
 }
 
 module.exports = {
