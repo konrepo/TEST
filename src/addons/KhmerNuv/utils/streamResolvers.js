@@ -38,7 +38,12 @@ function extractPlayableUrl(html = "") {
 ========================= */
 async function resolvePlayerUrl(playerUrl, depth = 0) {
   try {
-    if (!playerUrl || depth > 3) return null;
+    console.log("[resolvePlayerUrl] start:", { playerUrl, depth });
+
+    if (!playerUrl || depth > 3) {
+      console.log("[resolvePlayerUrl] stop: invalid url or max depth");
+      return null;
+    }
 
     const { data } = await axiosClient.get(playerUrl, {
       headers: {
@@ -48,20 +53,24 @@ async function resolvePlayerUrl(playerUrl, depth = 0) {
     });
 
     const html = typeof data === "string" ? data : JSON.stringify(data);
+    console.log("[resolvePlayerUrl] html length:", html.length);
+
     const found = extractPlayableUrl(html);
+    console.log("[resolvePlayerUrl] found:", found);
 
     if (!found) return null;
 
-    // If still another player.php URL, resolve again until direct video/embed found
     if (
       /phumikhmer\.vip\/player\.php\?(?:id|stream)=/i.test(found) &&
       found !== playerUrl
     ) {
+      console.log("[resolvePlayerUrl] recursive resolve:", found);
       return resolvePlayerUrl(found, depth + 1);
     }
 
     return found;
-  } catch {
+  } catch (err) {
+    console.log("[resolvePlayerUrl] error:", err.message);
     return null;
   }
 }
@@ -71,6 +80,8 @@ async function resolvePlayerUrl(playerUrl, depth = 0) {
 ========================= */
 async function resolveOkEmbed(embedUrl) {
   try {
+    console.log("[resolveOkEmbed] start:", embedUrl);
+
     const { data } = await axiosClient.get(embedUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0",
@@ -80,6 +91,7 @@ async function resolveOkEmbed(embedUrl) {
     });
 
     const html = typeof data === "string" ? data : JSON.stringify(data);
+    console.log("[resolveOkEmbed] html length:", html.length);
 
     const patterns = [
       /\\&quot;ondemandHls\\&quot;:\\&quot;(https:\/\/[^"]+?\.m3u8[^"]*)/i,
@@ -92,12 +104,16 @@ async function resolveOkEmbed(embedUrl) {
     for (const re of patterns) {
       const match = html.match(re);
       if (match) {
-        return cleanUrl(match[1]).replace(/\\&quot;.*/g, "");
+        const finalUrl = cleanUrl(match[1]).replace(/\\&quot;.*/g, "");
+        console.log("[resolveOkEmbed] found:", finalUrl);
+        return finalUrl;
       }
     }
 
+    console.log("[resolveOkEmbed] no hls found");
     return null;
-  } catch {
+  } catch (err) {
+    console.log("[resolveOkEmbed] error:", err.message);
     return null;
   }
 }
