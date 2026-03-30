@@ -4,6 +4,7 @@ const { URL_TO_POSTID, POST_INFO, BLOG_IDS } = require("../utils/cache");
 const {
   normalizePoster,
   extractVideoLinks,
+  extractSpecialEmbedUrls,
   extractEpisodeNumber,
   isProbablyVideoUrl,
   extractMaxEpFromTitle,
@@ -95,9 +96,12 @@ async function fetchFromBlog(blogId, postId) {
 
     thumbnail = normalizePoster(thumbnail);
 
-    let urls = extractVideoLinks(content).filter(isProbablyVideoUrl);
+    const directUrls = extractVideoLinks(content);
+    const specialUrls = extractSpecialEmbedUrls(content);
 
-    // fallback for raw numeric OK ids not already converted
+    let urls = [...new Set([...directUrls, ...specialUrls])]
+      .filter(isProbablyVideoUrl);
+
     if (!urls.length) {
       const okIds = extractOkIds(content);
       if (okIds.length) {
@@ -106,8 +110,6 @@ async function fetchFromBlog(blogId, postId) {
           .filter(isProbablyVideoUrl);
       }
     }
-
-    urls = [...new Set(urls)];
 
     if (!urls.length) return null;
 
@@ -133,14 +135,8 @@ async function getStreamDetail(postId) {
     Object.values(BLOG_IDS).map((blogId) => fetchFromBlog(blogId, postId))
   );
 
-  const valid = results.filter(Boolean);
-  if (!valid.length) return null;
-
-  // Prefer the result with the most URLs
-  // Usually best for episode discovery on VIP/Blogger mirrors
-  valid.sort((a, b) => (b.urls?.length || 0) - (a.urls?.length || 0));
-
-  const detail = valid[0];
+  const detail = results.find(Boolean);
+  if (!detail) return null;
 
   POST_INFO.set(postId, {
     ...(POST_INFO.get(postId) || {}),
@@ -204,7 +200,8 @@ async function getSundayEpisodesFromPage(seriesUrl) {
     const $ = cheerio.load(data);
 
     const rawUrls = extractVideoLinks(data).filter(isProbablyVideoUrl);
-    const uniqueUrls = [...new Set(rawUrls)];
+    const specialUrls = extractSpecialEmbedUrls(data).filter(isProbablyVideoUrl);
+    const uniqueUrls = [...new Set([...rawUrls, ...specialUrls])];
 
     if (!uniqueUrls.length) return [];
 
@@ -387,11 +384,6 @@ async function getStream(prefix, episodeUrl, episode) {
     if (!resolved) return null;
     url = resolved;
     forceProxyHeaders = true;
-  }
-
-  // let direct embed/preview URLs pass through
-  if (!isProbablyVideoUrl(url)) {
-    return null;
   }
 
   const providerNames = {
