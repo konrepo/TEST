@@ -1,6 +1,10 @@
 // index.js
 
+<<<<<<< HEAD:src/addons/KhmerNuv/index.js
 const { addonBuilder } = require("stremio-addon-sdk");
+=======
+const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
+>>>>>>> d1c1e96e63cf9bc2a495736b393f916ae53bf2aa:src/index.js
 const manifest = require("./manifest");
 const DEBUG = false;
 
