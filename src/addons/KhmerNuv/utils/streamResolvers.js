@@ -74,12 +74,7 @@ async function resolvePlayerUrl(playerUrl, depth = 0) {
       console.log("[resolvePlayerUrl] ext:", ext);
 
       if (decoded && /^https?:\/\//i.test(decoded)) {
-        if (ext && !decoded.includes(ext) && !/\.(mp4|m3u8)(\?|$)/i.test(decoded)) {
-          const finalUrl = decoded + ext;
-          console.log("[resolvePlayerUrl] final decoded with ext:", finalUrl);
-          return finalUrl;
-        }
-
+        // DO NOT append ext for signed stream URLs
         console.log("[resolvePlayerUrl] final decoded:", decoded);
         return decoded;
       }
@@ -101,7 +96,6 @@ async function resolvePlayerUrl(playerUrl, depth = 0) {
 
     if (!found) return null;
 
-    // If it found another player.php?stream=... then decode next round
     if (
       /phumikhmer\.vip\/player\.php\?(?:id|stream)=/i.test(found) &&
       found !== playerUrl
