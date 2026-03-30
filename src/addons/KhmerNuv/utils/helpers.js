@@ -26,6 +26,15 @@ const PLAYER_REGEX =
 const FILE_REGEX =
   /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
 
+const IFRAME_SRC_REGEX =
+  /<iframe[^>]+src=["']([^"']+)["']/gi;
+
+const ESCAPED_IFRAME_SRC_REGEX =
+  /src\\?u003d\\?["'](https?:\/\/[^"'\\]+)["']/gi;
+
+const RAW_SPECIAL_URL_REGEX =
+  /https?:\/\/(?:www\.)?(?:dailymotion\.com\/(?:embed\/video|video)\/[a-zA-Z0-9]+|drive\.google\.com\/(?:file\/d\/[a-zA-Z0-9_-]+\/(?:preview|view)|open\?id=[a-zA-Z0-9_-]+|uc\?(?:export=download&)?id=[a-zA-Z0-9_-]+)|player\.vimeo\.com\/video\/\d+|vimeo\.com\/\d+)/gi;
+
 function extractEpisodeNumber(url, index = 0, maxEp = null) {
   if (!url || typeof url !== "string") return index + 1;
 
@@ -59,11 +68,13 @@ function isProbablyVideoUrl(url) {
   return (
     /\.m3u8(\?|$)/i.test(url) ||
     /\.mp4(\?|$)/i.test(url) ||
-    /ok\.ru\/videoembed\//i.test(url) ||
+    /ok\.ru\/(?:videoembed|video)\//i.test(url) ||
     /phumikhmer\.vip\/player\.php\?(?:id|stream)=/i.test(url) ||
     /sooplive\.co\.kr/i.test(url) ||
-    /dailymotion\.com\/embed\/video\//i.test(url) ||
-    /drive\.google\.com\/file\/d\//i.test(url)
+    /dailymotion\.com\/(?:embed\/video|video)\//i.test(url) ||
+    /drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=download&)?id=)/i.test(url) ||
+    /player\.vimeo\.com\/video\//i.test(url) ||
+    /vimeo\.com\/\d+/i.test(url)
   );
 }
 
@@ -76,7 +87,6 @@ function extractVideoLinks(text) {
   const playerMatches = text.match(PLAYER_REGEX) || [];
 
   FILE_REGEX.lastIndex = 0;
-
   const fileMatches = [];
   let match;
   while ((match = FILE_REGEX.exec(text)) !== null) {
@@ -99,7 +109,7 @@ function extractSpecialEmbedUrls(text) {
   const urls = [];
   let match;
 
-  const patterns = [
+  const tokenPatterns = [
     {
       re: /\{ok\s*=\s*([0-9]{6,})\}/gi,
       map: (id) => `https://ok.ru/videoembed/${id}`
@@ -118,14 +128,32 @@ function extractSpecialEmbedUrls(text) {
     }
   ];
 
-  for (const { re, map } of patterns) {
+  for (const { re, map } of tokenPatterns) {
     re.lastIndex = 0;
     while ((match = re.exec(text)) !== null) {
       urls.push(map(match[1]));
     }
   }
 
-  return [...new Set(urls)].filter(isProbablyVideoUrl);
+  IFRAME_SRC_REGEX.lastIndex = 0;
+  while ((match = IFRAME_SRC_REGEX.exec(text)) !== null) {
+    urls.push(match[1]);
+  }
+
+  ESCAPED_IFRAME_SRC_REGEX.lastIndex = 0;
+  while ((match = ESCAPED_IFRAME_SRC_REGEX.exec(text)) !== null) {
+    urls.push(match[1]);
+  }
+
+  const rawSpecialMatches = text.match(RAW_SPECIAL_URL_REGEX) || [];
+  urls.push(...rawSpecialMatches);
+
+  return [...new Set(
+    urls
+      .map((u) => String(u || "").trim())
+      .map((u) => u.replace(/^http:/i, "https:"))
+      .map((u) => u.replace(/\/video\/(\d+)/i, "/videoembed/$1"))
+  )].filter(isProbablyVideoUrl);
 }
 
 function extractMaxEpFromTitle(title) {
