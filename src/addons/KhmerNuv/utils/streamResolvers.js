@@ -116,3 +116,87 @@ async function resolvePlayerUrl(playerUrl, depth = 0) {
     return null;
   }
 }
+
+/* =========================
+   RESOLVE OK
+========================= */
+async function resolveOkEmbed(embedUrl) {
+  try {
+    console.log("[resolveOkEmbed] start:", embedUrl);
+
+    const { data } = await axiosClient.get(embedUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Referer: "https://ok.ru/",
+        Origin: "https://ok.ru"
+      }
+    });
+
+    const html = typeof data === "string" ? data : JSON.stringify(data);
+    console.log("[resolveOkEmbed] html length:", html.length);
+
+    const patterns = [
+      /\\&quot;ondemandHls\\&quot;:\\&quot;(https:\/\/[^"]+?\.m3u8[^"]*)/i,
+      /&quot;ondemandHls&quot;:&quot;(https:\/\/[^"]+?\.m3u8[^"]*)/i,
+      /"ondemandHls":"(https:\/\/[^"]+?\.m3u8[^"]*)/i,
+      /"hlsMasterPlaylistUrl":"(https:\/\/[^"]+?\.m3u8[^"]*)/i,
+      /"hlsManifestUrl":"(https:\/\/[^"]+?\.m3u8[^"]*)/i
+    ];
+
+    for (const re of patterns) {
+      const match = html.match(re);
+      if (match) {
+        const finalUrl = cleanUrl(match[1]).replace(/\\&quot;.*/g, "");
+        console.log("[resolveOkEmbed] found:", finalUrl);
+        return finalUrl;
+      }
+    }
+
+    console.log("[resolveOkEmbed] no hls found");
+    return null;
+  } catch (err) {
+    console.log("[resolveOkEmbed] error:", err.message);
+    return null;
+  }
+}
+
+/* =========================
+   BUILD STREAM
+========================= */
+function buildStream(
+  url,
+  episode,
+  title,
+  name = "KhmerDub",
+  group = "khmerdub",
+  options = {}
+) {
+  const { forceProxyHeaders = false } = options;
+
+  const needsOkHeaders =
+    forceProxyHeaders || /ok\.ru|okcdn\.ru/i.test(url);
+
+  return {
+    url,
+    name,
+    title: title || `Episode ${episode}`,
+    type: /\.m3u8(\?|$)/i.test(url) ? "hls" : undefined,
+    behaviorHints: needsOkHeaders
+      ? {
+          group,
+          proxyHeaders: {
+            request: {
+              Referer: "https://ok.ru/",
+              Origin: "https://ok.ru"
+            }
+          }
+        }
+      : { group }
+  };
+}
+
+module.exports = {
+  resolvePlayerUrl,
+  resolveOkEmbed,
+  buildStream
+};
