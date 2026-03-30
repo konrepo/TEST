@@ -19,62 +19,192 @@ const {
 } = require("../utils/streamResolvers");
 
 /* =========================
+   VIP Blogger
+========================= */
+function parseVipBloggerContent(content = "") {
+  const urls = [];
+  const okIds = [];
+
+  // Direct links already supported by helpers
+  urls.push(...extractVideoLinks(content));
+
+  let m;
+
+  // {dm=xxxx}
+  const dmRegex = /\{dm=(\w+)\}/gi;
+  while ((m = dmRegex.exec(content)) !== null) {
+    urls.push(`https://www.dailymotion.com/embed/video/${m[1]}`);
+  }
+
+  // {gd=xxxx}
+  const gdRegex = /\{gd=(\w+)\}/gi;
+  while ((m = gdRegex.exec(content)) !== null) {
+    urls.push(`https://drive.google.com/file/d/${m[1]}/preview`);
+  }
+
+  // {ok=xxxx}
+  const okRegex = /\{ok=(\w+)\}/gi;
+  while ((m = okRegex.exec(content)) !== null) {
+    okIds.push(m[1]);
+  }
+
+  // If content says {embed=ok}, convert ids to embed urls
+  if (/\{embed\s*=\s*ok\}/i.test(content)) {
+    okIds.forEach((id) => {
+      urls.push(`https://ok.ru/videoembed/${id}`);
+    });
+  }
+
+  // Semicolon-separated fallback parts
+  const parts = content
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  for (const part of parts) {
+    if (/^https?:\/\//i.test(part)) {
+      urls.push(part);
+      continue;
+    }
+
+    const dm = part.match(/\{dm=(\w+)\}/i);
+    if (dm) {
+      urls.push(`https://www.dailymotion.com/embed/video/${dm[1]}`);
+      continue;
+    }
+
+    const gd = part.match(/\{gd=(\w+)\}/i);
+    if (gd) {
+      urls.push(`https://drive.google.com/file/d/${gd[1]}/preview`);
+      continue;
+    }
+
+    const ok = part.match(/\{ok=(\w+)\}/i);
+    if (ok) {
+      urls.push(`https://ok.ru/videoembed/${ok[1]}`);
+    }
+  }
+
+  return [...new Set(urls)];
+}
+
+/* =========================
    GET POST ID
 ========================= */
 async function getPostId(url) {
   if (URL_TO_POSTID.has(url)) {
-	  return URL_TO_POSTID.get(url);
+    return URL_TO_POSTID.get(url);
   }
 
-  const { data } = await axiosClient.get(url);
+  const { data } = await axiosClient.get(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      Referer: url
+    }
+  });
+
   const $ = cheerio.load(data);
 
-  // VIP / iDrama
-  let postId = $("#player").attr("data-post-id");
+  let postId = null;
+  let sourceType = null;
+
+  // Old VIP / iDrama
+  postId = $("#player").attr("data-post-id");
+  if (postId) sourceType = "blogger";
 
   // SundayDrama
   if (!postId) {
     const fanta = $('div[id="fanta"][data-post-id]').first();
     if (fanta.length) {
       postId = fanta.attr("data-post-id");
+      sourceType = "blogger";
     }
   }
-  
-  // SundayDrama fallback
+
+  // Old Blogger fallback
   if (!postId) {
     const match = data.match(
       /blogger\.com\/feeds\/\d+\/posts\/default\/(\d+)\?alt=json/i
     );
     if (match) {
       postId = match[1];
+      sourceType = "blogger";
     }
-  }  
+  }
+
+  // NEW VIP WordPress post id fallback
+  if (!postId) {
+    let m = null;
+
+    const shortlink = $('link[rel="shortlink"]').attr("href") || "";
+    m = shortlink.match(/[?&]p=(\d+)/i);
+
+    if (!m) {
+      const apiLink =
+        $('link[rel="alternate"][type="application/json"]').attr("href") || "";
+      m = apiLink.match(/\/wp-json\/wp\/v2\/posts\/(\d+)/i);
+    }
+
+    if (!m) {
+      const articleId = $("article[id^='post-']").attr("id") || "";
+      m = articleId.match(/^post-(\d+)$/i);
+    }
+
+    if (!m) {
+      const imgPostId = $("img[post-id]").first().attr("post-id");
+      if (imgPostId) {
+        m = [, imgPostId];
+      }
+    }
+
+    if (m) {
+      postId = m[1];
+      sourceType = "vip-wordpress";
+    }
+  }
 
   if (!postId) return null;
-  
+
   // Extract max EP from title OR from SundayDrama "episode/END.xx"
-  const pageTitle = $("title").text();
+  const pageTitle = $("title").text().trim();
   let maxEp = extractMaxEpFromTitle(pageTitle);
 
-  // SundayDrama often has: <b>episode/END.70</b>
   if (!maxEp) {
-    const epText =
-      $('b:contains("episode/")').first().text() || "";
-
+    const epText = $('b:contains("episode/")').first().text() || "";
     const m = epText.match(/episode\/(?:END\.)?(\d+)/i);
     if (m) maxEp = parseInt(m[1], 10);
-  } 
+  }
 
   URL_TO_POSTID.set(url, postId);
 
-  if (maxEp) {
-    POST_INFO.set(postId, {
-      ...(POST_INFO.get(postId) || {}),
-      maxEp,
-    });
-  }
+  POST_INFO.set(postId, {
+    ...(POST_INFO.get(postId) || {}),
+    maxEp: maxEp || null,
+    sourceType: sourceType || "unknown",
+    pageHtml: data
+  });
 
   return postId;
+}
+
+/* =========================
+   BLOGGER FETCH JSON
+========================= */
+async function fetchBloggerJson(blogId, postId) {
+  const feedUrl = `https://www.blogger.com/feeds/${blogId}/posts/default/${postId}?alt=json`;
+
+  try {
+    const { data } = await axiosClient.get(feedUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Referer: "https://phumikhmer.vip/"
+      }
+    });
+
+    return data?.entry || null;
+  } catch {
+    return null;
+  }
 }
 
 /* =========================
@@ -120,24 +250,102 @@ async function fetchFromBlog(blogId, postId) {
 }
 
 /* =========================
+   FETCH VIP
+========================= */
+async function fetchVipWordpressDetail(seriesUrl, postId) {
+  const cached = POST_INFO.get(postId) || {};
+
+  let pageHtml = cached.pageHtml;
+  if (!pageHtml) {
+    const { data } = await axiosClient.get(seriesUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Referer: seriesUrl
+      }
+    });
+    pageHtml = data;
+  }
+
+  const $ = cheerio.load(pageHtml);
+
+  const pageTitle =
+    $("h1.single-post-title .post-title").text().trim() ||
+    $("meta[property='og:title']").attr("content") ||
+    $("title").text().trim();
+
+  let thumbnail =
+    $("meta[property='og:image']").attr("content") ||
+    $("meta[name='twitter:image']").attr("content") ||
+    $("img[post-id]").first().attr("src") ||
+    $("img[post-id]").first().attr("data-src") ||
+    "";
+
+  thumbnail = normalizePoster(thumbnail);
+
+  const vipBlogs = [BLOG_IDS.ONELEGEND, BLOG_IDS.KOLAB];
+
+  const entries = await Promise.all(
+    vipBlogs.map((blogId) => fetchBloggerJson(blogId, postId))
+  );
+
+  for (const entry of entries) {
+    if (!entry) continue;
+
+    const title = entry.title?.$t || pageTitle;
+    const content = entry.content?.$t || "";
+
+    const urls = parseVipBloggerContent(content);
+    if (!urls.length) continue;
+
+    if (!thumbnail) {
+      const $content = cheerio.load(content);
+      thumbnail = normalizePoster(
+        $content("img").first().attr("src") ||
+        entry.media$thumbnail?.url ||
+        ""
+      );
+    }
+
+    return {
+      title,
+      thumbnail,
+      urls
+    };
+  }
+
+  return null;
+}
+
+/* =========================
    STREAM DETAIL
 ========================= */
-async function getStreamDetail(postId) {
+async function getStreamDetail(postId, seriesUrl) {
   const cached = POST_INFO.get(postId);
   if (cached?.detail) return cached.detail;
 
-  const results = await Promise.all(
-    Object.values(BLOG_IDS).map(blogId =>
-      fetchFromBlog(blogId, postId)
-    )
-  );
+  const sourceType = cached?.sourceType || "blogger";
+  let detail = null;
 
-  const detail = results.find(Boolean);
+  if (sourceType === "vip-wordpress") {
+    detail = await fetchVipWordpressDetail(seriesUrl, postId);
+  } else {
+    const results = await Promise.all(
+      Object.values(BLOG_IDS).map((blogId) =>
+        fetchFromBlog(blogId, postId)
+      )
+    );
+
+    detail = results.find(Boolean);
+  }
+
   if (!detail) {
     return null;
   }
 
-  POST_INFO.set(postId, { ...(POST_INFO.get(postId) || {}), detail });
+  POST_INFO.set(postId, {
+    ...(POST_INFO.get(postId) || {}),
+    detail
+  });
 
   return detail;
 }
@@ -183,7 +391,7 @@ async function getEpisodes(prefix, seriesUrl) {
     return [];
   }
 
-  const detail = await getStreamDetail(postId);
+  const detail = await getStreamDetail(postId, seriesUrl);
 
   if (!detail) {
     return [];
@@ -199,7 +407,7 @@ async function getEpisodes(prefix, seriesUrl) {
 
   return urls.map((url, index) => ({
     id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
-    title: detail.title,
+    title: `Episode ${index + 1}`,
     season: 1,
     episode: index + 1,
     thumbnail: detail.thumbnail,
@@ -243,7 +451,7 @@ async function getStream(prefix, seriesUrl, episode) {
 
   if (!postId) return null;
 
-  const detail = await getStreamDetail(postId);
+  const detail = await getStreamDetail(postId, seriesUrl);
   if (!detail) return null;
 
   let url = detail.urls[episode - 1];
