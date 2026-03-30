@@ -1,13 +1,15 @@
 const URL_TO_POSTID = new Map(); // seriesUrl -> postId
-const POST_INFO = new Map();     // postId -> { maxEp?, detail? }
+const POST_INFO = new Map();     // postId -> { maxEp?, detail?, sourceType?, pageHtml? }
 
 const BLOG_IDS = {
   TVSABAY: "8016412028548971199",
   ONELEGEND: "596013908374331296",
   KOLAB: "7770980406614294729",
 
-  IDRAMA: "7770980406614294729", 
-  IDRAMAHD: "596013908374331296",  
+  // aliases for engine priority
+  VIP: "596013908374331296",
+  IDRAMA: "7770980406614294729",
+  IDRAMAHD: "596013908374331296",
 
   SUNDAY1: "7871281676618369095",
   SUNDAY2: "596013908374331296",
