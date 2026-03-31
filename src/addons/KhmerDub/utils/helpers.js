@@ -82,7 +82,10 @@ function mapMetas(items, type = "series") {
     name: item.name,
     poster: item.poster,
     posterShape: "poster",
-    genres: item.genres || []
+    genres: item.genres || [],
+    description: item.genres?.length
+      ? `Category: ${item.genres.join(", ")}`
+      : ""
   }));
 }
 
