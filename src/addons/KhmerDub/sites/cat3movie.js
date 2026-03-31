@@ -58,9 +58,13 @@ function extractSources(html) {
 ========================= */
 async function getDetail(url) {
   try {
+    console.log("[cat3] Fetching detail:", url);
+
     const { data } = await axiosClient.get(url, {
       headers: HEADERS
     });
+
+    console.log("[cat3] HTML snippet:", data.slice(0, 1000));
 
     const $ = cheerio.load(data);
 
@@ -79,16 +83,19 @@ async function getDetail(url) {
 
     const sources = extractSources(data);
 
+    console.log("[cat3] Title:", title);
+    console.log("[cat3] Sources found:", sources);
+
     return {
       title,
       poster,
       sources
     };
-  } catch {
+  } catch (e) {
+    console.log("[cat3] getDetail error:", e.message);
     return null;
   }
 }
-
 /* =========================
    CATALOG
 ========================= */
@@ -172,10 +179,18 @@ async function getEpisodes(prefix, url) {
    STREAM
 ========================= */
 async function getStream(prefix, url, epNum = 1) {
+  console.log("[cat3] getStream called:", url);
+
   const detail = await getDetail(url);
-  if (!detail?.sources?.length) return null;
+
+  if (!detail?.sources?.length) {
+    console.log("[cat3] No sources found");
+    return null;
+  }
 
   const streamUrl = detail.sources[0];
+
+  console.log("[cat3] Using stream:", streamUrl);
 
   return buildStream(
     streamUrl,
