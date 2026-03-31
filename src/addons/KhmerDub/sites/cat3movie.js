@@ -216,8 +216,8 @@ async function getCatalogItems(prefix, siteConfig, url) {
       return {
         id: `${prefix}:${encodeURIComponent(link)}`,
         name: category ? `[${category}] ${title}` : title,
-        poster
-		//genres: category ? [category] : []
+        poster,
+		genres: category ? [category] : []
       };
     });
 
@@ -251,10 +251,11 @@ async function getEpisodes(prefix, url) {
   return [
     {
       id: `${prefix}:${encodeURIComponent(url)}`,
-      title: detail.title,
+      title: detail.category ? `[${detail.category}] ${detail.title}` : detail.title,
       season: 1,
       episode: 1,
-      thumbnail: detail.poster
+      thumbnail: detail.poster,
+      description: detail.category ? `Category: ${detail.category}` : ""
     }
   ];
 }
