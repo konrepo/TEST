@@ -137,11 +137,15 @@ async function getCatalogItems(prefix, siteConfig, url) {
         $el.find("img").attr("src");
 
       poster = normalizePoster(absolutize(poster, pageUrl));
+	  
+    const category =
+      $el.find(".term-badges.floated .term-badge a").text().trim();
 
       return {
         id: `${prefix}:${encodeURIComponent(link)}`,
-        name: title,
-        poster
+        name:  category ? `[${category}] ${title}` : title,
+        poster,
+		genres: category ? [category] : []
       };
     });
 
