@@ -139,7 +139,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
       poster = normalizePoster(absolutize(poster, pageUrl));
 
       const category = $el
-        .find(".term-badges .term-badge a")
+        .find(".featured .term-badges .term-badge a")
         .first()
         .text()
         .trim();
