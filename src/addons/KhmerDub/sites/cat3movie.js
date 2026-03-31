@@ -48,7 +48,14 @@ function uniq(arr) {
 function extractSources(html) {
   const sources = [
     ...html.matchAll(/file\s*:\s*["']([^"']+)["']/gi)
-  ].map(m => m[1]);
+  ]
+    .map(m => String(m[1] || "").trim())
+    .filter(url =>
+      url &&
+      url !== "#" &&
+      /^https?:\/\//i.test(url) &&
+      (/\.(mp4|m3u8)(\?|$)/i.test(url) || /\/video\//i.test(url))
+    );
 
   return uniq(sources);
 }
@@ -188,7 +195,9 @@ async function getStream(prefix, url, epNum = 1) {
     return null;
   }
 
-  const streamUrl = detail.sources[0];
+  const streamUrl = detail.sources.find(
+  url => url && url !== "#" && /^https?:\/\//i.test(url)
+  );
 
   console.log("[cat3] Using stream:", streamUrl);
 
