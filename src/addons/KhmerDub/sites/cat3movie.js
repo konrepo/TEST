@@ -116,7 +116,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
 
     const $ = cheerio.load(data);
 
-    const posts = $("article.listing-item").toArray();
+    const posts = $("article[class*='listing-item']").toArray();
 
     const results = posts.map(el => {
       const $el = $(el);
@@ -137,19 +137,21 @@ async function getCatalogItems(prefix, siteConfig, url) {
         $el.find("img").attr("src");
 
       poster = normalizePoster(absolutize(poster, pageUrl));
-	  
-    const category = $el
-      .find(".term-badges.floated .term-badge a")
-      .first()
-      .text()
-      .trim();
 
-    return {
-      id: `${prefix}:${encodeURIComponent(link)}`,
-      name: category ? `[${category}] ${title}` : title,
-      poster,
-      genres: category ? [category] : []
-    };
+      const category = $el
+        .find(".term-badges .term-badge a")
+        .first()
+        .text()
+        .trim();
+
+      console.log("[cat3] category:", category);
+
+      return {
+        id: `${prefix}:${encodeURIComponent(link)}`,
+        name: category ? `[${category}] ${title}` : title,
+        poster,
+        genres: category ? [category] : []
+      };
     });
 
     return uniqById(results.filter(Boolean));
