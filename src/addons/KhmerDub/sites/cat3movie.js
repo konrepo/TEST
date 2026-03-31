@@ -44,7 +44,6 @@ function uniq(arr) {
 
 async function resolveCat3Embed(embedUrl) {
   try {
-    console.log("[cat3] Resolving embed:", embedUrl);
 
     const { data } = await axiosClient.get(embedUrl, {
       headers: {
@@ -58,12 +57,10 @@ async function resolveCat3Embed(embedUrl) {
       data.match(/url\s*:\s*'([^']*\/api\/\?[^']+)'/i);
 
     if (!apiMatch || !apiMatch[1]) {
-      console.log("[cat3] No API URL found in embed");
       return [];
     }
 
     const apiUrl = apiMatch[1].replace(/\\\//g, "/");
-    console.log("[cat3] Embed API:", apiUrl);
 
     const { data: apiRes } = await axiosClient.get(apiUrl, {
       headers: {
@@ -74,8 +71,6 @@ async function resolveCat3Embed(embedUrl) {
         "X-Requested-With": "XMLHttpRequest"
       }
     });
-
-    console.log("[cat3] Embed API raw status:", apiRes?.status);
 
     const rawSources =
       apiRes?.sources ||
@@ -91,11 +86,8 @@ async function resolveCat3Embed(embedUrl) {
           .filter(Boolean)
       : [];
 
-    console.log("[cat3] Embed resolved sources:", sources);
-
     return uniq(sources);
   } catch (e) {
-    console.log("[cat3] resolveCat3Embed error:", e.message);
     return [];
   }
 }
@@ -138,7 +130,6 @@ function extractServerLinks(html, pageUrl) {
 ========================= */
 async function getDetail(url) {
   try {
-    console.log("[cat3] Fetching detail:", url);
 
     const { data } = await axiosClient.get(url, {
       headers: HEADERS
@@ -169,18 +160,14 @@ async function getDetail(url) {
 
     const sources = extractSources(data);
 
-    console.log("[cat3] Title:", title);
-    console.log("[cat3] Category:", category);
-    console.log("[cat3] Sources found:", sources);
-
     return {
       title,
       poster,
       category,
       sources
     };
+	
   } catch (e) {
-    console.log("[cat3] getDetail error:", e.message);
     return null;
   }
 }
@@ -225,8 +212,6 @@ async function getCatalogItems(prefix, siteConfig, url) {
         .first()
         .text()
         .trim();
-
-      console.log("[cat3] category:", category);
 
       return {
         id: `${prefix}:${encodeURIComponent(link)}`,
@@ -278,7 +263,6 @@ async function getEpisodes(prefix, url) {
    STREAM
 ========================= */
 async function getStream(prefix, url, epNum = 1) {
-  console.log("[cat3] getStream called:", url);
 
   try {
     const detail = await getDetail(url);
@@ -288,13 +272,10 @@ async function getStream(prefix, url, epNum = 1) {
     });
 
     const serverLinks = extractServerLinks(data, url);
-    console.log("[cat3] Streams:", serverLinks.length);
-    console.log("[cat3] Server links:", serverLinks);
 
     const finalSources = [...(detail?.sources || [])];
 
     for (const serverUrl of serverLinks) {
-	  console.log("[cat3] Checking server:", serverUrl);
 	  
       if (/\.(m3u8|mp4)(\?|$)/i.test(serverUrl)) {
         finalSources.push(serverUrl);
@@ -314,7 +295,6 @@ async function getStream(prefix, url, epNum = 1) {
     }
 
     const uniqueSources = uniq(finalSources);
-    console.log("[cat3] Final playable candidates:", uniqueSources);
 
     if (!uniqueSources.length) return null;
 
@@ -328,7 +308,6 @@ async function getStream(prefix, url, epNum = 1) {
       )
     );
   } catch (e) {
-    console.log("[cat3] getStream error:", e.message);
     return null;
   }
 }
