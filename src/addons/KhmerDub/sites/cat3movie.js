@@ -42,6 +42,64 @@ function uniq(arr) {
   return [...new Set(arr.filter(Boolean))];
 }
 
+async function resolveCat3Embed(embedUrl) {
+  try {
+    console.log("[cat3] Resolving embed:", embedUrl);
+
+    const { data } = await axiosClient.get(embedUrl, {
+      headers: {
+        ...HEADERS,
+        Referer: embedUrl
+      }
+    });
+
+    const apiMatch =
+      data.match(/url\s*:\s*"([^"]*\/api\/\?[^"]+)"/i) ||
+      data.match(/url\s*:\s*'([^']*\/api\/\?[^']+)'/i);
+
+    if (!apiMatch || !apiMatch[1]) {
+      console.log("[cat3] No API URL found in embed");
+      return [];
+    }
+
+    const apiUrl = apiMatch[1].replace(/\\\//g, "/");
+    console.log("[cat3] Embed API:", apiUrl);
+
+    const { data: apiRes } = await axiosClient.get(apiUrl, {
+      headers: {
+        ...HEADERS,
+        Referer: embedUrl,
+        Origin: "https://play.cat3movie.club",
+        Accept: "application/json, text/plain, */*",
+        "X-Requested-With": "XMLHttpRequest"
+      }
+    });
+
+    console.log("[cat3] Embed API raw status:", apiRes?.status);
+
+    const rawSources =
+      apiRes?.sources ||
+      apiRes?.data?.sources ||
+      [];
+
+    const sources = Array.isArray(rawSources)
+      ? rawSources
+          .map((s) => {
+            if (typeof s === "string") return s;
+            return s?.file || s?.src || s?.url || "";
+          })
+          .filter(Boolean)
+      : [];
+
+    console.log("[cat3] Embed resolved sources:", sources);
+
+    return uniq(sources);
+  } catch (e) {
+    console.log("[cat3] resolveCat3Embed error:", e.message);
+    return [];
+  }
+}
+
 /* =========================
    JWPLAYER PARSER
 ========================= */
@@ -58,6 +116,21 @@ function extractSources(html) {
     );
 
   return uniq(sources);
+}
+
+function extractServerLinks(html, pageUrl) {
+  const $ = cheerio.load(html);
+  const links = [];
+
+  const iframeSrc = $("#movie-player iframe").attr("src");
+  if (iframeSrc) links.push(absolutize(iframeSrc, pageUrl));
+
+  $("#server-list a").each((_, el) => {
+    const href = $(el).attr("href");
+    if (href) links.push(absolutize(href, pageUrl));
+  });
+
+  return uniq(links);
 }
 
 /* =========================
@@ -158,7 +231,8 @@ async function getCatalogItems(prefix, siteConfig, url) {
       return {
         id: `${prefix}:${encodeURIComponent(link)}`,
         name: category ? `[${category}] ${title}` : title,
-        poster
+        poster,
+		genres: category ? [category] : []
       };
     });
 
@@ -207,68 +281,52 @@ async function getStream(prefix, url, epNum = 1) {
   console.log("[cat3] getStream called:", url);
 
   try {
-    const { data } = await axiosClient.get(url, { headers: HEADERS });
-    const $ = cheerio.load(data);
+    const detail = await getDetail(url);
 
-    const streams = [];
-
-    // =========================
-    // 1. SERVER LIST (BEST)
-    // =========================
-    $("#server-list a").each((i, el) => {
-      const link = $(el).attr("href");
-      const label = $(el).text().trim() || `Server ${i + 1}`;
-
-      if (link && /^https?:\/\//i.test(link)) {
-        streams.push({
-          name: `Cat3Movie - ${label}`,
-          title: `Cat3Movie - ${label}`,
-          url: link,
-          behaviorHints: { notWebReady: false }
-        });
-      }
+    const { data } = await axiosClient.get(url, {
+      headers: HEADERS
     });
 
-    // =========================
-    // 2. IFRAME FALLBACK
-    // =========================
-    if (!streams.length) {
-      const iframeSrc = $("#movie-player iframe").attr("src");
+    const serverLinks = extractServerLinks(data, url);
+    console.log("[cat3] Streams:", serverLinks.length);
+    console.log("[cat3] Server links:", serverLinks);
 
-      if (iframeSrc && /^https?:\/\//i.test(iframeSrc)) {
-        streams.push({
-          name: "Cat3Movie - Server 1",
-          title: "Cat3Movie - Server 1",
-          url: iframeSrc,
-          behaviorHints: { notWebReady: false }
-        });
+    const finalSources = [...(detail?.sources || [])];
+
+    for (const serverUrl of serverLinks) {
+	  console.log("[cat3] Checking server:", serverUrl);
+	  
+      if (/\.(m3u8|mp4)(\?|$)/i.test(serverUrl)) {
+        finalSources.push(serverUrl);
+        continue;
+      }
+
+      if (/play\.cat3movie\.club\/embed\//i.test(serverUrl)) {
+        const embedSources = await resolveCat3Embed(serverUrl);
+        finalSources.push(...embedSources);
+        continue;
+      }
+
+      if (/playhydrax\.com/i.test(serverUrl)) {
+        finalSources.push(serverUrl);
+        continue;
       }
     }
 
-    // =========================
-    // 3. DIRECT FILE FALLBACK
-    // =========================
-    if (!streams.length) {
-      const detail = await getDetail(url);
+    const uniqueSources = uniq(finalSources);
+    console.log("[cat3] Final playable candidates:", uniqueSources);
 
-      if (detail?.sources?.length) {
-        detail.sources.forEach((src, i) => {
-          streams.push(
-            buildStream(
-              src,
-              epNum,
-              `${detail.title} - Server ${i + 1}`,
-              "Cat3Movie",
-              "cat3"
-            )
-          );
-        });
-      }
-    }
+    if (!uniqueSources.length) return null;
 
-    console.log("[cat3] Streams:", streams.length);
-    return streams.length ? streams : null;
-
+    return uniqueSources.map((src, index) =>
+      buildStream(
+        src,
+        epNum,
+        detail?.title || "Cat3Movie",
+        `Cat3Movie ${index + 1}`,
+        "cat3"
+      )
+    );
   } catch (e) {
     console.log("[cat3] getStream error:", e.message);
     return null;
