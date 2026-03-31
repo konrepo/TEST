@@ -138,15 +138,18 @@ async function getCatalogItems(prefix, siteConfig, url) {
 
       poster = normalizePoster(absolutize(poster, pageUrl));
 	  
-    const category =
-      $el.find(".term-badges.floated .term-badge a").text().trim();
+    const category = $el
+      .find(".term-badges.floated .term-badge a")
+      .first()
+      .text()
+      .trim();
 
-      return {
-        id: `${prefix}:${encodeURIComponent(link)}`,
-        name:  category ? `[${category}] ${title}` : title,
-        poster,
-		genres: category ? [category] : []
-      };
+    return {
+      id: `${prefix}:${encodeURIComponent(link)}`,
+      name: category ? `[${category}] ${title}` : title,
+      poster,
+      genres: category ? [category] : []
+    };
     });
 
     return uniqById(results.filter(Boolean));

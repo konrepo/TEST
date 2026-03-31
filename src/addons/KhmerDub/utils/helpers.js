@@ -81,7 +81,8 @@ function mapMetas(items, type = "series") {
     type,
     name: item.name,
     poster: item.poster,
-    posterShape: "poster"
+    posterShape: "poster",
+    genres: item.genres || []
   }));
 }
 
