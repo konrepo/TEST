@@ -205,26 +205,57 @@ async function getEpisodes(prefix, url) {
 async function getStream(prefix, url, epNum = 1) {
   console.log("[cat3] getStream called:", url);
 
-  const detail = await getDetail(url);
+  try {
+    const { data } = await axiosClient.get(url, { headers: HEADERS });
+    const $ = cheerio.load(data);
 
-  if (!detail?.sources?.length) {
-    console.log("[cat3] No sources found");
+    const streams = [];
+
+    // ✅ 1. Extract server links
+    $("#server-list a").each((i, el) => {
+      const link = $(el).attr("href");
+      const label = $(el).text().trim() || `Server ${i + 1}`;
+
+      if (link && /^https?:\/\//i.test(link)) {
+        streams.push(
+          buildStream(
+            link,
+            epNum,
+            `${label}`,
+            "Cat3Movie",
+            "cat3"
+          )
+        );
+      }
+    });
+
+    // ✅ 2. Fallback to JWPlayer (your old logic)
+    if (!streams.length) {
+      const detail = await getDetail(url);
+
+      if (!detail?.sources?.length) return null;
+
+      const streamUrl = detail.sources[0];
+
+      streams.push(
+        buildStream(
+          streamUrl,
+          epNum,
+          detail.title,
+          "Cat3Movie",
+          "cat3"
+        )
+      );
+    }
+
+    console.log("[cat3] Streams:", streams.length);
+
+    return streams.length ? streams : null;
+
+  } catch (e) {
+    console.log("[cat3] getStream error:", e.message);
     return null;
   }
-
-  const streamUrl = detail.sources.find(
-  url => url && url !== "#" && /^https?:\/\//i.test(url)
-  );
-
-  console.log("[cat3] Using stream:", streamUrl);
-
-  return buildStream(
-    streamUrl,
-    epNum,
-    detail.title,
-    "Cat3Movie",
-    "cat3"
-  );
 }
 
 module.exports = {

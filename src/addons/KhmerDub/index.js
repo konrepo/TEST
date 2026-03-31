@@ -314,10 +314,10 @@ builder.defineStreamHandler(async ({ id }) => {
 
     const seriesUrl = decodeURIComponent(encodedUrl);
 
-    const stream = await siteEngine.getStream(prefix, seriesUrl, epNum);
-    if (!stream) return { streams: [] };
+    const streams = await siteEngine.getStream(prefix, seriesUrl, epNum);
+    if (!streams) return { streams: [] };
 
-    return { streams: [stream] };
+    return { streams };
 
   } catch {
     return { streams: [] };
