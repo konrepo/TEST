@@ -276,6 +276,24 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
     }
 
     if (!match || !match[1]) {
+      const videoUrlMatches = [
+        ...html.matchAll(/"name":"[^"]+","url":"(https:[^"]+)"/gi),
+        ...html.matchAll(/"url":"(https:[^"]+)","name":"[^"]+"/gi),
+        ...html.matchAll(/&quot;name&quot;:&quot;[^"]+&quot;,&quot;url&quot;:&quot;(https:[^"]+)&quot;/gi),
+        ...html.matchAll(/&quot;url&quot;:&quot;(https:[^"]+)&quot;,&quot;name&quot;:&quot;[^"]+&quot;/gi)
+      ];
+
+      if (videoUrlMatches.length) {
+        const directUrl = videoUrlMatches[videoUrlMatches.length - 1][1]
+          .replace(/\\u0026/g, "&")
+          .replace(/\\&/g, "&")
+          .replace(/\\\//g, "/")
+          .replace(/&amp;/g, "&");
+
+        console.log("[OK video-array resolved]", directUrl);
+        return directUrl;
+      }
+
       return null;
     }
 
