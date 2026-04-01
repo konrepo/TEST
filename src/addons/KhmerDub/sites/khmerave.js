@@ -222,6 +222,9 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
       .replace(/\\&/g, "&")
       .replace(/\\\//g, "/");
 
+
+    console.log("[OK URL]", okUrl);
+    console.log("[OK HTML sample]", String(html).slice(0, 1000));
     let match = null;
 
     const patterns = [
@@ -248,6 +251,7 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
       .replace(/\\u0026/g, "&")
       .replace(/\\&/g, "&");
 
+    console.log("[OK matched URL]", cleanUrl);
     return cleanUrl;
 
   } catch (err) {
@@ -305,9 +309,14 @@ async function getStream(prefix, seriesUrl, episode) {
     if (!candidate) return null;
 
     const cand = normalizeOkUrl(candidate);
+	console.log("[KhmerAve candidate]", cand);
 
     if (cand.includes("ok.ru")) {
+	  console.log("[KhmerAve OK candidate]", cand);
+	  
       const direct = await resolveOkRuToDirect(cand, UA_MOB);
+	  console.log("[KhmerAve OK resolved]", direct);
+	  
       if (!direct) return null;
 
       return {
