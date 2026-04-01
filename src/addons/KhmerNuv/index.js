@@ -310,32 +310,13 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       const cached = CATALOG_CACHE.get(cacheKey);
       if (cached) return cached;
 
-      let url = extra?.search
-        ? `${base}/?s=${encodeURIComponent(extra.search)}`
-        : `${base}/`;
-
-      const headers = {
-        "User-Agent":
-          "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Mobile Safari/537.36",
-        Referer: `${base}/`
-      };
-
-      let currentPage = 1;
-
-      while (currentPage < targetPage && url) {
-        const { data } = await axiosClient.get(url, { headers });
-        const nextUrl = siteEngine.getNextPageUrl(base, data);
-
-        if (!nextUrl) {
-          url = null;
-          break;
-        }
-
-        url = nextUrl;
-        currentPage++;
-      }
-
-      if (!url) return { metas: [] };
+      const url = extra?.search
+        ? targetPage === 1
+          ? `${base}/?s=${encodeURIComponent(extra.search)}`
+          : `${base}/page/${targetPage}/?s=${encodeURIComponent(extra.search)}`
+        : targetPage === 1
+          ? `${base}/`
+          : `${base}/page/${targetPage}/`;
 
       const items = await siteEngine.getCatalogItems(id, site, url);
       if (!items.length) return { metas: [] };
