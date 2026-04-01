@@ -305,6 +305,14 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       const skip = Number(extra?.skip || 0);
       const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
 
+      if (DEBUG) console.log("CAT3 DEBUG:", {
+        id,
+        skip: extra?.skip,
+        parsedSkip: skip,
+        pageSize: WEBSITE_PAGE_SIZE,
+        targetPage
+      });
+
       cacheKey = `catalog:${id}:${extra?.search || ""}:page:${targetPage}`;
 
       const cached = CATALOG_CACHE.get(cacheKey);
@@ -317,6 +325,8 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         : targetPage === 1
           ? `${base}/`
           : `${base}/page/${targetPage}/`;
+
+      if (DEBUG) console.log("CAT3 URL:", url);
 
       const items = await siteEngine.getCatalogItems(id, site, url);
       if (!items.length) return { metas: [] };
