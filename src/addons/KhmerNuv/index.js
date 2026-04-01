@@ -300,29 +300,15 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     // Cat3Movie: custom next-page pagination
     if (id === "cat3movie") {
       const base = String(site.baseUrl || "").replace(/\/$/, "");
-      const WEBSITE_PAGE_SIZE = site.pageSize || 40;
       const SKIP_STEP = 100;
 
       const skip = Number(extra?.skip || 0);
       const targetPage = Math.floor(skip / SKIP_STEP) + 1;
 
-      console.log("CAT3 DEBUG START:", {
-        id,
-        extra,
-        rawSkip: extra?.skip,
-        parsedSkip: skip,
-        pageSize: WEBSITE_PAGE_SIZE,
-        skipStep: SKIP_STEP,
-        targetPage
-      });
-
       cacheKey = `catalog:${id}:${extra?.search || ""}:page:${targetPage}`;
 
       const cached = CATALOG_CACHE.get(cacheKey);
-      if (cached) {
-        console.log("CAT3 CACHE HIT:", cacheKey);
-        return cached;
-      }
+      if (cached) return cached;
 
       const url = extra?.search
         ? targetPage === 1
@@ -332,11 +318,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
           ? `${base}/`
           : `${base}/page/${targetPage}/`;
 
-      console.log("CAT3 URL:", url);
-
       const items = await siteEngine.getCatalogItems(id, site, url);
-      console.log("CAT3 ITEM COUNT:", items.length);
-
       if (!items.length) return { metas: [] };
 
       const fixed = applyMetaId(items, id);
@@ -347,8 +329,6 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       };
 
       CATALOG_CACHE.set(cacheKey, result);
-      console.log("CAT3 RETURN metas:", result.metas.length);
-
       return result;
     }
 	
