@@ -156,20 +156,13 @@ function extractOkIds(text) {
 }
 
 function mapMetas(items, type = "series") {
-  return items.map((item) => {
-    const genreText = Array.isArray(item.genres)
-      ? item.genres.join(", ")
-      : "";
-
-    return {
-      id: item.id,
-      type,
-      name: item.name,
-      poster: item.poster || "",
-      posterShape: "poster",
-      description: genreText || item.name
-    };
-  });
+  return items.map((item) => ({
+    id: item.id,
+    type,
+    name: item.name,
+    poster: item.poster || "",
+    posterShape: "poster"
+  }));
 }
 
 function uniqById(items) {
