@@ -305,18 +305,23 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       const skip = Number(extra?.skip || 0);
       const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
 
-      if (DEBUG) console.log("CAT3 DEBUG:", {
+      console.log("CAT3 DEBUG START:", {
         id,
-        skip: extra?.skip,
+        extra,
+        rawSkip: extra?.skip,
         parsedSkip: skip,
         pageSize: WEBSITE_PAGE_SIZE,
         targetPage
       });
 
       cacheKey = `catalog:${id}:${extra?.search || ""}:page:${targetPage}`;
+      console.log("CAT3 CACHE KEY:", cacheKey);
 
       const cached = CATALOG_CACHE.get(cacheKey);
-      if (cached) return cached;
+      if (cached) {
+        console.log("CAT3 CACHE HIT:", cacheKey);
+        return cached;
+      }
 
       const url = extra?.search
         ? targetPage === 1
@@ -326,12 +331,19 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
           ? `${base}/`
           : `${base}/page/${targetPage}/`;
 
-      if (DEBUG) console.log("CAT3 URL:", url);
+      console.log("CAT3 URL:", url);
 
       const items = await siteEngine.getCatalogItems(id, site, url);
+      console.log("CAT3 ITEM COUNT:", items.length);
+
+      if (items.length) {
+        console.log("CAT3 FIRST ITEM:", items[0]);
+      }
+
       if (!items.length) return { metas: [] };
 
       const fixed = applyMetaId(items, id);
+      console.log("CAT3 FIXED COUNT:", fixed.length);
 
       const result = {
         metas: mapMetas(fixed, "movie"),
@@ -339,9 +351,11 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       };
 
       CATALOG_CACHE.set(cacheKey, result);
+      console.log("CAT3 RETURN metas:", result.metas.length);
+
       return result;
     }
-
+	
     // VIP / iDrama: normal paging
     const WEBSITE_PAGE_SIZE = site.pageSize || 30;
     const PAGES_PER_BATCH = 2;
