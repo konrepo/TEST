@@ -182,7 +182,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
         if (!link || !title) return null;
 
         return {
-          id: `xvideos:${encodeURIComponent(absolutize(link))}`,
+          id: absolutize(link),
           name: title,
           poster: normalizePoster(poster)
         };
