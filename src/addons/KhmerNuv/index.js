@@ -338,7 +338,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     // xVideos: custom next-page pagination
     if (id === "xvideos") {
       const base = String(site.baseUrl || "").replace(/\/$/, "");
-      const SKIP_STEP = 100;
+      const SKIP_STEP = 27;
 
       const skip = Number(extra?.skip || 0);
       const targetPage = Math.floor(skip / SKIP_STEP) + 1;
@@ -365,7 +365,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       } else {
         url = targetPage === 1
           ? `${base}/new`
-          : `${base}/new/${targetPage - 1}`;
+          : `${base}/new/${targetPage}`;
       }
 
       if (DEBUG) {
