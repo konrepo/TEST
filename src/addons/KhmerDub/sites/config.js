@@ -53,6 +53,12 @@ module.exports = {
     ...defaultSite,
     baseUrl: "https://www.cat3movie.club/",
     pageSize: 40,
-}  
+},
+
+  xvideos: {
+    ...defaultSite,
+    baseUrl: "https://www.xvideos.com",
+    pageSize: 27,
+}   
   
 };

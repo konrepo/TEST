@@ -8,8 +8,8 @@ const sites = [
   { id: "khmerave", name: "KhmerAve-TEST", type: "series" },
   { id: "merlkon", name: "Merlkon-TEST", type: "series" },
   { id: "idrama", name: "iDramaHD-TEST", type: "series" },
-
-  { id: "cat3movie", name: "Cat3Movie-TEST", type: "movie" }
+  { id: "cat3movie", name: "Cat3Movie-TEST", type: "movie" },
+  { id: "xvideos", name: "xvideos-TEST", type: "movie" }  
 ];
 
 module.exports = {
