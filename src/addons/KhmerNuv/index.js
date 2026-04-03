@@ -343,6 +343,14 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       const skip = Number(extra?.skip || 0);
       const targetPage = Math.floor(skip / SKIP_STEP) + 1;
 
+      if (DEBUG) {
+        console.log("[XVIDEOS] PAGINATION:", {
+          skip,
+          targetPage,
+          search: extra?.search || null
+        });
+      }
+
       cacheKey = `catalog:${id}:${extra?.search || ""}:page:${targetPage}`;
 
       const cached = CATALOG_CACHE.get(cacheKey);
@@ -351,7 +359,6 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       let url;
 
       if (extra?.search) {
-        // search pattern may need adjustment if xvideos search paging differs
         url = targetPage === 1
           ? `${base}/?k=${encodeURIComponent(extra.search)}`
           : `${base}/?k=${encodeURIComponent(extra.search)}&p=${targetPage}`;
@@ -361,7 +368,19 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
           : `${base}/new/${targetPage - 1}`;
       }
 
+      if (DEBUG) {
+        console.log("[XVIDEOS] URL:", url);
+      }
+
       const items = await siteEngine.getCatalogItems(id, site, url);
+
+      if (DEBUG) {
+        console.log("[XVIDEOS] ITEMS:", {
+          count: items.length,
+          page: targetPage
+        });
+      }
+
       if (!items.length) return { metas: [] };
 
       const fixed = applyMetaId(items, id);

@@ -155,6 +155,8 @@ async function getDetail(url) {
    CATALOG
 ========================= */
 async function getCatalogItems(prefix, siteConfig, url) {
+  console.log("[XVIDEOS] FETCH:", url);
+
   try {
     const pageUrl = url || BASE_URL;
 
@@ -164,9 +166,15 @@ async function getCatalogItems(prefix, siteConfig, url) {
 
     const $ = cheerio.load(data);
 
+    const rawItems = $(".thumb-block").toArray();
     const items = $(".thumb-block")
       .not(".video-suggest")
       .toArray();
+
+    console.log("[XVIDEOS] RAW vs FILTERED:", {
+      raw: rawItems.length,
+      filtered: items.length
+    });
 
     const results = items
       .map((el) => {
@@ -191,8 +199,15 @@ async function getCatalogItems(prefix, siteConfig, url) {
       })
       .filter(Boolean);
 
-    return uniqById(results);
-  } catch {
+    console.log("[XVIDEOS] MAPPED:", results.length);
+
+    const unique = uniqById(results);
+
+    console.log("[XVIDEOS] UNIQUE:", unique.length);
+
+    return unique;
+  } catch (err) {
+    console.log("[XVIDEOS] ERROR:", err.message);
     return [];
   }
 }
