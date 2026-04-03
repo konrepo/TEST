@@ -1,11 +1,13 @@
 const { addonBuilder } = require("stremio-addon-sdk");
 const manifest = require("./manifest");
 const DEBUG = false;
+const MOVIE_SITES = ["cat3movie", "xvideos"];
 
 const engine = require("./sites/engine");
 const khmerave = require("./sites/khmerave");
 const phumi2 = require("./sites/phumi2");
 const cat3movie = require("./sites/cat3movie");
+const xvideos = require("./sites/xvideos");
 
 const PAGE_TRACKER = new Map();
 const PAGE_URL_CACHE = new Map();
@@ -43,7 +45,8 @@ const ENGINES = {
   khmerave,
   merlkon: khmerave,
   phumi2,
-  cat3movie
+  cat3movie,
+  xvideos,
 };
 
 function getSiteEngine(id) {
@@ -65,7 +68,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     let cacheKey;
 
     // Phumi2 uses normalized paging -> custom cache key later
-    if (id !== "phumi2" && id !== "cat3movie") {
+    if (id !== "phumi2" && id !== "cat3movie" && id !== "xvideos") {
       cacheKey = `catalog:${id}:${JSON.stringify(extra || {})}`;
       const cached = CATALOG_CACHE.get(cacheKey);
       if (cached) return cached;
@@ -384,7 +387,7 @@ builder.defineMetaHandler(async ({ id }) => {
 
     const parts = id.split(":");
     const prefix = parts[0];
-    const metaType = prefix === "cat3movie" ? "movie" : TYPE;
+    const metaType = MOVIE_SITES.includes(prefix) ? "movie" : TYPE;
 
     const ctx = getSiteEngine(prefix);
     if (!ctx) return { meta: null };
@@ -452,7 +455,7 @@ builder.defineMetaHandler(async ({ id }) => {
         description: (first.title || "KhmerDub").replace(/\[.*?\]/g, ""),
         poster: first.thumbnail,
         background: first.thumbnail,
-        videos: prefix === "cat3movie"
+        videos: MOVIE_SITES.includes(prefix)
           ? [{
               id: `${id}:1`,
               title: cleanName,
@@ -468,7 +471,7 @@ builder.defineMetaHandler(async ({ id }) => {
               thumbnail: ep.thumbnail
             })),
       },
-    };;
+    };
   } catch (err) {
     console.error("meta error:", err);
     return { meta: null };
