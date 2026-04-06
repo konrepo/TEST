@@ -2,34 +2,41 @@ const TYPES = ["series", "movie"];
 const EXTRA = ["search", "skip"];
 
 const sites = [
-  { id: "vip", name: "PhumiVip-TEST", type: "series" },
-  { id: "sunday", name: "SundayDrama-TEST", type: "series" },
-  { id: "phumi2", name: "PhumiClub-TEST", type: "series" },
-  { id: "khmerave", name: "KhmerAve-TEST", type: "series" },
-  { id: "merlkon", name: "Merlkon-TEST", type: "series" },
-  { id: "idrama", name: "iDramaHD-TEST", type: "series" },
-  { id: "cat3movie", name: "Cat3Movie-TEST", type: "movie" },
-  { id: "xvideos", name: "xvideos-TEST", type: "movie" }  
+  { id: "vip", name: "PhumiVip-test", type: "series", enabled: true },
+  { id: "sunday", name: "SundayDrama-test", type: "series", enabled: true },
+  { id: "phumi2", name: "PhumiClub-test", type: "series", enabled: true },
+  { id: "khmerave", name: "KhmerAve-test", type: "series", enabled: true },
+  { id: "merlkon", name: "Merlkon-test", type: "series", enabled: true },
+  { id: "idrama", name: "iDramaHD-test", type: "series", enabled: true },
+  { id: "khmertv", name: "KhmerTV Live", type: "movie", enabled: true },
+  { id: "cat3movie", name: "Cat3Movie", type: "movie", enabled: false } // disabled
 ];
 
 module.exports = {
-  id: "community.khmer.test",
-  version: "3.5.0-test",
-  name: "KhmerDub Test",
-  description: "Stream Experimental Build STREMIO | Dev: TheDevilz.",
-  logo: "https://raw.githubusercontent.com/konrepo/VIP/refs/heads/main/test.png",
+  id: "community.khmer.dubbed",
+  version: "3.1.0",
+  name: "KhmerDub",
+  description: "Stream Asian dramas dubbed in Khmer (Stremio App) | Dev: TheDevilz.",
+  logo: "https://raw.githubusercontent.com/konrepo/TEST/refs/heads/main/test.png",
 
   resources: ["catalog", "meta", "stream"],
   types: TYPES,
 
-  catalogs: sites.map(site => ({
-    type: site.type,
-    id: site.id,
-    name: site.name,
-    extraSupported: EXTRA
+  catalogs: sites
+    .filter(site => site.enabled !== false)
+    .map(site => ({
+      type: site.type,
+      id: site.id,
+      name: site.name,
+      extraSupported: EXTRA
   })),
 
   behaviorHints: {
     configurable: false
+  },
+
+  stremioAddonsConfig: {
+    issuer: "https://stremio-addons.net",
+    signature: "eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2In0..H15_k0Iyb4K2d5Gbz4-rwg.FswET_xxG8N5XtMjR6lpbNburR7DMF2Ie5NjMSlaNGneFEM-28ioA1ofdunoYFheKAmgc1t5cboQSOgTbXpjPflnSAY9DSJURdIZxfrrYg_LoOLpDqyIgOHS42t6xOYS.-gPH7tB42CWK0qMRv2HtFw"
   }
 };

@@ -1,11 +1,15 @@
 const { addonBuilder } = require("stremio-addon-sdk");
 const manifest = require("./manifest");
 
+const enabledSites = new Set(
+  manifest.catalogs.map(c => c.id)
+);
+
 const engine = require("./sites/engine");
 const khmerave = require("./sites/khmerave");
 const phumi2 = require("./sites/phumi2");
 const cat3movie = require("./sites/cat3movie");
-const xvideos = require("./sites/xvideos");
+const khmertv = require("./sites/khmertv");
 
 const sites = require("./sites/config");
 
@@ -15,7 +19,7 @@ const { normalizePoster, mapMetas, uniqById } = require("./utils/helpers");
 
 const SITE_TYPES = {
   cat3movie: "movie",
-  xvideos: "movie",
+  khmertv: "movie",
   default: "series"
 };
 
@@ -27,10 +31,12 @@ const ENGINES = {
   merlkon: khmerave,
   phumi2,
   cat3movie,
-  xvideos
+  khmertv
 };
 
 function getSiteEngine(id) {
+  if (!enabledSites.has(id)) return null;
+
   const site = sites[id];
   const engine = ENGINES[id];
 
@@ -170,24 +176,18 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       return { metas: mapMetas(uniq, type) };
     }
 
-    if (id === "phumi2" || id === "cat3movie" || id === "xvideos") {
+    if (id === "phumi2" || id === "cat3movie") {
       const base = String(site.baseUrl || "").replace(/\/$/, "");
 
       const startUrl = extra?.search
-        ? id === "cat3movie"
-          ? `${base}/?s=${encodeURIComponent(extra.search)}`
-          : id === "xvideos"
-            ? `${base}/?k=${encodeURIComponent(extra.search)}`
-            : `${base}/search?q=${encodeURIComponent(extra.search)}&max-results=12`
-        : id === "cat3movie"
-          ? `${base}/`
-          : id === "xvideos"
-            ? `${base}/`
-            : `${base}/?max-results=12`;
+	  ? id === "cat3movie"
+        ? `${base}/?s=${encodeURIComponent(extra.search)}`
+        : `${base}/search?q=${encodeURIComponent(extra.search)}&max-results=12`
+	  : id === "cat3movie"
+        ? `${base}/`
+        : `${base}/?max-results=12`;
 
-      const WEBSITE_PAGE_SIZE =
-        site.pageSize || (id === "cat3movie" ? 40 : id === "xvideos" ? 27 : 12);
-
+      const WEBSITE_PAGE_SIZE = site.pageSize || (id === "cat3movie" ? 40 : 12);
       const PAGES_PER_BATCH = 3;
 
       const skip = Number(extra?.skip || 0);
