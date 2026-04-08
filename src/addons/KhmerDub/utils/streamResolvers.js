@@ -33,19 +33,90 @@ async function resolveOkEmbed(embedUrl) {
       }
     });
 
-    const hlsMatch =
-      data.match(/\\&quot;ondemandHls\\&quot;:\\&quot;(https:\/\/[^"]+?\.m3u8)/) ||
-      data.match(/&quot;ondemandHls&quot;:&quot;(https:\/\/[^"]+?\.m3u8)/);
+    let html = typeof data === "string" ? data : JSON.stringify(data);
 
-    if (!hlsMatch) {
+    html = html
+      .replace(/\\u0026/g, "&")
+      .replace(/\\\//g, "/")
+      .replace(/\\&quot;/g, '"')
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, "&");
+
+    const patterns = [
+      /"hlsMasterPlaylistUrl":"(https:[^"]+?\.m3u8[^"]*)"/i,
+      /"ondemandHls":"(https:[^"]+?\.m3u8[^"]*)"/i,
+      /"hlsManifestUrl":"(https:[^"]+?\.m3u8[^"]*)"/i,
+      /"metadataUrl":"(https:[^"]+)"/i,
+      /"videoSrc":"(https:[^"]+?\.m3u8[^"]*)"/i,
+      /"(https:\/\/[^"]+master\.m3u8[^"]*)"/i,
+      /"(https:\/\/[^"]+\.m3u8[^"]*)"/i
+    ];
+
+    let match = null;
+
+    for (const re of patterns) {
+      const m = html.match(re);
+      if (m?.[1]) {
+        match = m;
+        break;
+      }
+    }
+
+    if (!match?.[1]) {
+      const altMatches = [
+        ...html.matchAll(/"name":"[^"]+","url":"(https:[^"]+)"/gi),
+        ...html.matchAll(/"url":"(https:[^"]+)","name":"[^"]+"/gi)
+      ];
+
+      if (altMatches.length) {
+        return altMatches[altMatches.length - 1][1]
+          .replace(/\\u0026/g, "&")
+          .replace(/\\\//g, "/")
+          .replace(/&amp;/g, "&");
+      }
+
       return null;
     }
 
-    return hlsMatch[1]
+    let cleanUrl = match[1]
       .replace(/\\u0026/g, "&")
       .replace(/\\\//g, "/")
-      .replace(/&amp;/g, "&")
-      .replace(/\\&quot;.*/g, "");
+      .replace(/&amp;/g, "&");
+
+    // metadata url -> fetch actual m3u8
+    if (/metadata/i.test(cleanUrl) && /^https?:\/\//i.test(cleanUrl)) {
+      try {
+        const { data: metaData } = await axiosClient.get(cleanUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0",
+            Referer: "https://ok.ru/"
+          }
+        });
+
+        let metaText = typeof metaData === "string"
+          ? metaData
+          : JSON.stringify(metaData);
+
+        metaText = metaText
+          .replace(/\\u0026/g, "&")
+          .replace(/\\\//g, "/")
+          .replace(/&amp;/g, "&");
+
+        const metaMatch =
+          metaText.match(/"ondemandHls":"(https:[^"]+?\.m3u8[^"]*)"/i) ||
+          metaText.match(/"hlsMasterPlaylistUrl":"(https:[^"]+?\.m3u8[^"]*)"/i) ||
+          metaText.match(/"(https:\/\/[^"]+\.m3u8[^"]*)"/i);
+
+        if (metaMatch?.[1]) {
+          cleanUrl = metaMatch[1]
+            .replace(/\\u0026/g, "&")
+            .replace(/\\\//g, "/")
+            .replace(/&amp;/g, "&");
+        }
+      } catch {}
+    }
+
+    return cleanUrl;
   } catch {
     return null;
   }
