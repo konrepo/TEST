@@ -275,7 +275,9 @@ builder.defineStreamHandler(async ({ id }) => {
     const parts = id.split(":");
     const prefix = parts[0];
 
-    const isMovie = (SITE_TYPES[prefix] || SITE_TYPES.default) === "movie";
+    const siteType = SITE_TYPES[prefix] || SITE_TYPES.default;
+    const isMovie = siteType === "movie";
+
     const episode = isMovie ? 1 : Number(parts[parts.length - 1]);
 
     const encodedUrl = isMovie
@@ -286,20 +288,21 @@ builder.defineStreamHandler(async ({ id }) => {
       return { streams: [] };
     }
 
+    const seriesUrl = decodeURIComponent(encodedUrl);
+
     const ctx = getSiteEngine(prefix);
     if (!ctx) return { streams: [] };
 
     const { engine: siteEngine } = ctx;
-    const seriesUrl = decodeURIComponent(encodedUrl);
 
     const result = await siteEngine.getStream(prefix, seriesUrl, episode);
 
-    // NEW CONTRACT HANDLING
+    // New engine returns { streams: [...] }
     if (result && result.streams) {
       return result;
     }
 
-    // BACKWARD COMPATIBILITY
+    // Legacy engines (khmerave, phumi2)
     if (result) {
       return { streams: Array.isArray(result) ? result : [result] };
     }
@@ -307,7 +310,7 @@ builder.defineStreamHandler(async ({ id }) => {
     return { streams: [] };
 
   } catch (err) {
-    console.error("[stream handler]", err);
+    console.error("[defineStreamHandler]", err);
     return { streams: [] };
   }
 });
