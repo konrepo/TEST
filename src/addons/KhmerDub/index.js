@@ -222,7 +222,14 @@ builder.defineMetaHandler(async ({ id }) => {
   try {
     const parts = id.split(":");
     const prefix = parts[0];
-    const encodedUrl = parts.slice(1).join(":");
+
+    const siteType = SITE_TYPES[prefix] || SITE_TYPES.default;
+    const isMovie = siteType === "movie";
+
+    // strip episode + season suffix
+    const encodedUrl = isMovie
+      ? parts.slice(1).join(":")
+      : parts.slice(1).join(":"); // meta id has no episode yet
 
     if (!prefix || !encodedUrl) return { meta: null };
 
@@ -230,7 +237,6 @@ builder.defineMetaHandler(async ({ id }) => {
     if (!ctx) return { meta: null };
 
     const { engine: siteEngine } = ctx;
-    const siteType = SITE_TYPES[prefix] || SITE_TYPES.default;
     const seriesUrl = decodeURIComponent(encodedUrl);
 
     const episodes = await siteEngine.getEpisodes(prefix, seriesUrl);
@@ -238,7 +244,7 @@ builder.defineMetaHandler(async ({ id }) => {
 
     const first = episodes[0];
 
-    if (siteType === "movie") {
+    if (isMovie) {
       return {
         meta: {
           id,
@@ -254,15 +260,15 @@ builder.defineMetaHandler(async ({ id }) => {
     return {
       meta: {
         id,
-        type: siteType,
+        type: "series",
         name: first.title,
         poster: first.thumbnail,
         background: first.thumbnail,
         videos: episodes
       }
     };
-
-  } catch {
+  } catch (err) {
+    console.error("[defineMetaHandler]", err);
     return { meta: null };
   }
 });
