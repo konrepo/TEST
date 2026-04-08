@@ -37,6 +37,7 @@ async function resolveOkEmbed(embedUrl) {
 
     html = html
       .replace(/\\u0026/g, "&")
+      .replace(/\\&/g, "&")
       .replace(/\\\//g, "/")
       .replace(/\\&quot;/g, '"')
       .replace(/&quot;/g, '"')
@@ -71,6 +72,7 @@ async function resolveOkEmbed(embedUrl) {
       if (altMatches.length) {
         return altMatches[altMatches.length - 1][1]
           .replace(/\\u0026/g, "&")
+          .replace(/\\&/g, "&")
           .replace(/\\\//g, "/")
           .replace(/&amp;/g, "&");
       }
@@ -80,10 +82,10 @@ async function resolveOkEmbed(embedUrl) {
 
     let cleanUrl = match[1]
       .replace(/\\u0026/g, "&")
+      .replace(/\\&/g, "&")
       .replace(/\\\//g, "/")
       .replace(/&amp;/g, "&");
 
-    // metadata url -> fetch actual m3u8
     if (/metadata/i.test(cleanUrl) && /^https?:\/\//i.test(cleanUrl)) {
       try {
         const { data: metaData } = await axiosClient.get(cleanUrl, {
@@ -99,6 +101,7 @@ async function resolveOkEmbed(embedUrl) {
 
         metaText = metaText
           .replace(/\\u0026/g, "&")
+          .replace(/\\&/g, "&")
           .replace(/\\\//g, "/")
           .replace(/&amp;/g, "&");
 
@@ -112,15 +115,22 @@ async function resolveOkEmbed(embedUrl) {
         if (metaMatch?.[1]) {
           cleanUrl = metaMatch[1]
             .replace(/\\u0026/g, "&")
+            .replace(/\\&/g, "&")
             .replace(/\\\//g, "/")
             .replace(/&amp;/g, "&");
-			
+
           console.log("[resolveOkEmbed] metadata final", cleanUrl);
         }
       } catch {}
     }
-	
-	console.log("[resolveOkEmbed] final", cleanUrl);
+
+    cleanUrl = cleanUrl
+      .replace(/\\u0026/g, "&")
+      .replace(/\\&/g, "&")
+      .replace(/\\\//g, "/")
+      .replace(/&amp;/g, "&");
+
+    console.log("[resolveOkEmbed] final", cleanUrl);
 
     return cleanUrl;
   } catch {
