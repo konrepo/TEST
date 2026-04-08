@@ -1,6 +1,5 @@
 const { addonBuilder } = require("stremio-addon-sdk");
 const manifest = require("./manifest");
-const crypto = require("crypto");
 const DEBUG = false;
 
 const enabledSites = new Set(
@@ -24,22 +23,12 @@ const { normalizePoster, mapMetas, uniqById } = require("./utils/helpers");
 //const { makeMetaId } = require("./utils/hash");
 const { URL_CACHE, EP_CACHE, CATALOG_CACHE } = require("./utils/cache");
 
-function makeMetaId(prefix, url) {
-  const hash = crypto
-    .createHash("md5")
-    .update(`${prefix}:${url}`)
-    .digest("hex")
-    .slice(0, 16);
-
-  return `${prefix}:${hash}`;
-}
-
 function applyMetaId(items, prefix) {
   return items.map(item => {
     const url = item.id || item.url;
     if (typeof url !== "string" || !url.trim()) return null;
 
-    const metaId = makeMetaId(prefix, url);
+    const metaId = `${prefix}:${encodeURIComponent(url)}`;
     URL_CACHE.set(metaId, url);
 
     return {
@@ -497,25 +486,35 @@ builder.defineMetaHandler(async ({ id }) => {
 ========================= */
 builder.defineStreamHandler(async ({ id }) => {
   try {
-    let metaId = id;
-    let epNum = 1;
+    const parts = id.split(":");
+    if (parts.length < 2) return { streams: [] };
 
-    const parts = String(id || "").split(":");
-    const last = parts[parts.length - 1];
+    const episode = parts.pop();
+    const metaId = parts.join(":");
 
-    // Accept episode IDs like vip:abcd1234:12
-    if (/^\d+$/.test(last) && parts.length >= 3) {
-      epNum = Number(last);
-      metaId = parts.slice(0, -1).join(":");
+    const epNum = Number(episode);
+    if (!Number.isInteger(epNum) || epNum <= 0) {
+      return { streams: [] };
     }
 
-    const prefix = metaId.split(":")[0];
+    const metaParts = metaId.split(":");
+    const prefix = metaParts[0];
+
     const ctx = getSiteEngine(prefix);
     if (!ctx) return { streams: [] };
 
-    const { engine: siteEngine } = ctx;
+    const { site, engine: siteEngine } = ctx;
 
     let seriesUrl = URL_CACHE.get(metaId);
+
+    if (!seriesUrl && metaParts.length > 1) {
+      try {
+        seriesUrl = decodeURIComponent(metaParts.slice(1).join(":"));
+      } catch {
+        seriesUrl = null;
+      }
+    }
+
     if (!seriesUrl) return { streams: [] };
 
     let episodes = EP_CACHE.get(metaId);
@@ -542,19 +541,22 @@ builder.defineStreamHandler(async ({ id }) => {
     }
 
     let ep = episodes.find(e => e.episode === epNum);
-
-    // Fallback: if Fusion sends only parent ID, try first episode
-    if (!ep) ep = episodes[0];
+    if (!ep && epNum - 1 >= 0 && epNum - 1 < episodes.length) {
+      ep = episodes[epNum - 1];
+    }
     if (!ep) return { streams: [] };
 
     let stream;
+
     if (prefix === "khmerave" || prefix === "merlkon") {
-      stream = await khmerave.getStream(prefix, ep.url, ep.episode || epNum);
+      stream = await khmerave.getStream(prefix, ep.url, ep.episode);
     } else {
-      stream = await siteEngine.getStream(prefix, ep.url, ep.episode || epNum);
+      stream = await siteEngine.getStream(prefix, ep.url, epNum);
     }
 
-    return stream ? { streams: [stream] } : { streams: [] };
+    if (!stream) return { streams: [] };
+
+    return { streams: [stream] };
   } catch (err) {
     console.error("stream error:", err);
     return { streams: [] };
