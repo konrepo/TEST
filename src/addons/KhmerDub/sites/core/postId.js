@@ -23,46 +23,10 @@ async function getPostId(url) {
   let postId = null;
   let sourceType = null;
 
-  const urlObj = new URL(url);
-  const hostname = urlObj.hostname.replace(/^www\./, "");
-
-  // Prefer VIP WordPress detection on phumikhmer.vip
-  if (hostname === "phumikhmer.vip") {
-    let match = null;
-
-    const shortlink = $('link[rel="shortlink"]').attr("href") || "";
-    match = shortlink.match(/[?&]p=(\d+)/i);
-
-    if (!match) {
-      const apiLink =
-        $('link[rel="alternate"][type="application/json"]').attr("href") || "";
-      match = apiLink.match(/\/wp-json\/wp\/v2\/posts\/(\d+)/i);
-    }
-
-    if (!match) {
-      const articleId = $("article[id^='post-']").attr("id") || "";
-      match = articleId.match(/^post-(\d+)$/i);
-    }
-
-    if (!match) {
-      const imgPostId = $("img[post-id]").first().attr("post-id");
-      if (imgPostId) {
-        match = [, imgPostId];
-      }
-    }
-
-    if (match) {
-      postId = match[1];
-      sourceType = "vip-wordpress";
-    }
-  }
-
   // VIP / iDrama old blogger style
-  if (!postId) {
-    postId = $("#player").attr("data-post-id");
-    if (postId) {
-      sourceType = "blogger";
-    }
+  postId = $("#player").attr("data-post-id");
+  if (postId) {
+    sourceType = "blogger";
   }
 
   // SundayDrama
@@ -85,7 +49,7 @@ async function getPostId(url) {
     }
   }
 
-  // VIP WordPress fallback for non-phumikhmer.vip cases
+  // VIP WordPress fallback
   if (!postId) {
     let match = null;
 
@@ -127,6 +91,7 @@ async function getPostId(url) {
     if (match) maxEp = parseInt(match[1], 10);
   }
 
+  const urlObj = new URL(url);
   const slug =
     urlObj.pathname
       .split("/")
