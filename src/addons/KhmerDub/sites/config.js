@@ -51,7 +51,12 @@ module.exports = {
     articleSelector: "article.hitmag-post",
     titleSelector: "h3.entry-title a",
     posterSelector: ".archive-thumb img",
-    posterAttrs: ["data-src", "src"]
+    posterAttrs: ["data-src", "src"],
+	genreUrls: {
+      Thai: "https://www.idramahd.com/thai-drama/",
+      China: "https://www.idramahd.com/chinese-drama/",
+      Korean: "https://www.idramahd.com/korean-drama/"
+	}
   },
   
   cat3movie: {
