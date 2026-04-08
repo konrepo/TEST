@@ -1,119 +1,72 @@
-const axiosClient = require("../../utils/fetch");
-const cheerio = require("cheerio");
-
 const { resolvePost } = require("./postResolver");
+const { POST_INFO } = require("../../utils/cache");
+
 const bloggerEngine = require("./bloggerEngine");
 const wordpressEngine = require("./wordpressEngine");
 const { BLOG_IDS } = require("../../utils/cache");
 
 /* =========================
-   MAIN ENTRY
+   EPISODE LISTING
 ========================= */
 async function getEpisodes(prefix, seriesUrl) {
-  const { postId, info } = await resolvePost(seriesUrl);
+  const { postId } = await resolvePost(seriesUrl);
 
-  /* =========================
-     BLOGGER SERIES
-  ========================= */
-  if (info?.sourceType === "blogger" && postId) {
-    const episodes = [];
+  // no postId = no episodes
+  if (!postId) return [];
 
-    for (const blogId of Object.values(BLOG_IDS)) {
-      const detail = await bloggerEngine.fetchFromBlog(blogId, postId);
-      if (!detail?.urls?.length) continue;
+  const cached = POST_INFO.get(postId);
+  if (!cached) return [];
 
-      detail.urls.forEach((_, idx) => {
-        episodes.push({
-          id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${idx + 1}`,
-          title: detail.title || `Episode ${idx + 1}`,
-          season: 1,
-          episode: idx + 1,
-          thumbnail: detail.thumbnail || "",
-          released: new Date().toISOString()
-        });
-      });
+  const maxEp = cached.maxEp;
+  if (!maxEp || maxEp <= 0) return [];
 
-      if (episodes.length) return episodes;
-    }
-  }
+  const thumbnail =
+    cached.detail?.thumbnail ||
+    cached.poster ||
+    "";
 
-  /* =========================
-     WORDPRESS SERIES
-  ========================= */
-  if (info?.sourceType === "wordpress" && postId) {
-    const detail = await wordpressEngine.fetchWordpressDetail(
-      seriesUrl,
-      postId
-    );
-
-    if (detail?.urls?.length) {
-      return detail.urls.map((_, idx) => ({
-        id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${idx + 1}`,
-        title: detail.title || `Episode ${idx + 1}`,
-        season: 1,
-        episode: idx + 1,
-        thumbnail: detail.thumbnail || "",
-        released: new Date().toISOString()
-      }));
-    }
-  }
-
-  /* =========================
-     EXTERNAL EPISODE LINKS 
-     e.g. nizu.top / kolabkhmer.com
-  ========================= */
-  const externalEpisodes = await extractExternalEpisodes(prefix, seriesUrl);
-  if (externalEpisodes.length) return externalEpisodes;
-
-  return [];
+  return Array.from({ length: maxEp }, (_, i) => ({
+    id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${i + 1}`,
+    title: `Episode ${i + 1}`,
+    season: 1,
+    episode: i + 1,
+    thumbnail,
+    released: new Date().toISOString()
+  }));
 }
 
 /* =========================
-   EXTERNAL EPISODE EXTRACTOR
+   STREAM DETAIL
 ========================= */
-async function extractExternalEpisodes(prefix, seriesUrl) {
-  try {
-    const { data } = await axiosClient.get(seriesUrl, {
-      headers: { Referer: seriesUrl }
-    });
+async function getStreamDetail(postId, sourceType, seriesUrl) {
+  const cached = POST_INFO.get(postId);
+  if (cached?.detail) return cached.detail;
 
-    const $ = cheerio.load(data);
+  let detail = null;
 
-    // Detect NIZU series link
-    const nizuSeries =
-      $("a[href*='nizu.top/series/']").first().attr("href");
+  if (sourceType === "wordpress" || sourceType === "vip-wordpress") {
+    detail = await wordpressEngine.fetchWordpressDetail(seriesUrl, postId);
+  } else {
+    const results = await Promise.all(
+      Object.values(BLOG_IDS).map(blogId =>
+        bloggerEngine.fetchFromBlog(blogId, postId)
+      )
+    );
 
-    if (!nizuSeries) return [];
-
-    // Fetch NIZU series page
-    const { data: seriesHtml } = await axiosClient.get(nizuSeries, {
-      headers: { Referer: seriesUrl }
-    });
-
-    const $$ = cheerio.load(seriesHtml);
-
-    // Extract all episode links
-    const episodeLinks = $$("a[href*='virak-nearei-hang-pleung-']")
-      .map((_, el) => $$(el).attr("href"))
-      .get()
-      .filter(Boolean);
-
-    const unique = [...new Set(episodeLinks)];
-
-    return unique.map((url, idx) => ({
-      id: `${prefix}:${encodeURIComponent(url)}:1:${idx + 1}`,
-      title: `Episode ${idx + 1}`,
-      season: 1,
-      episode: idx + 1,
-      thumbnail: "",
-      released: new Date().toISOString()
-    }));
-  } catch (err) {
-    console.error("External episode parse error:", err.message);
-    return [];
+    detail = results.find(Boolean);
   }
+
+  if (!detail) return null;
+
+  POST_INFO.set(postId, {
+    ...(POST_INFO.get(postId) || {}),
+    detail
+  });
+
+  return detail;
 }
 
 module.exports = {
-  getEpisodes
+  getEpisodes,
+  getStreamDetail
 };

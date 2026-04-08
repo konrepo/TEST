@@ -26,7 +26,10 @@ async function resolvePost(seriesUrl) {
      FETCH PAGE
   ========================= */
   const { data } = await axiosClient.get(seriesUrl, {
-    headers: { Referer: seriesUrl }
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      Referer: seriesUrl
+    }
   });
 
   const $ = cheerio.load(data);
@@ -38,13 +41,13 @@ async function resolvePost(seriesUrl) {
      DETECT POST ID
   ========================= */
 
-  // Blogger embedded player
+  // VIP / iDrama Blogger player
   postId = $("#player").attr("data-post-id");
   if (postId) {
     sourceType = "blogger";
   }
 
-  // SundayDrama special container
+  // SundayDrama container
   if (!postId) {
     const fanta = $('div[id="fanta"][data-post-id]').first();
     if (fanta.length) {
@@ -53,7 +56,7 @@ async function resolvePost(seriesUrl) {
     }
   }
 
-  // Blogger feed URL in page source
+  // Blogger feed URL fallback
   if (!postId) {
     const m = data.match(
       /blogger\.com\/feeds\/\d+\/posts\/default\/(\d+)\?alt=json/i
@@ -64,10 +67,12 @@ async function resolvePost(seriesUrl) {
     }
   }
 
-  // WordPress fallbacks (VIP / iDrama)
+  // WordPress fallbacks (VIP)
   if (!postId) {
+    let m = null;
+
     const shortlink = $('link[rel="shortlink"]').attr("href") || "";
-    let m = shortlink.match(/[?&]p=(\d+)/i);
+    m = shortlink.match(/[?&]p=(\d+)/i);
 
     if (!m) {
       const api =
@@ -78,6 +83,13 @@ async function resolvePost(seriesUrl) {
     if (!m) {
       const art = $("article[id^='post-']").attr("id") || "";
       m = art.match(/^post-(\d+)$/i);
+    }
+
+    if (!m) {
+      const imgPostId = $("img[post-id]").first().attr("post-id");
+      if (imgPostId) {
+        m = [, imgPostId];
+      }
     }
 
     if (m) {
@@ -96,18 +108,34 @@ async function resolvePost(seriesUrl) {
   /* =========================
      METADATA EXTRACTION
   ========================= */
+
   const slug =
-    new URL(seriesUrl).pathname.split("/").filter(Boolean).pop() || "";
+    new URL(seriesUrl).pathname
+      .split("/")
+      .filter(Boolean)
+      .pop() || "";
 
   const pageTitle = $("title").text().trim();
-  const maxEp = extractMaxEpFromTitle(pageTitle);
+
+  // Primary extraction from title
+  let maxEp = extractMaxEpFromTitle(pageTitle);
+
+  // Secondary fallback 
+  if (!maxEp) {
+    const epText = $('b:contains("episode/")').first().text() || "";
+    const m = epText.match(/episode\/(?:END\.)?(\d+)/i);
+    if (m) {
+      maxEp = parseInt(m[1], 10);
+    }
+  }
 
   /* =========================
-     CACHE WRITE (TTL-AWARE)
+     CACHE WRITE
   ========================= */
   setPostIdForUrl(seriesUrl, postId);
 
   setPostInfo(postId, {
+    ...(getPostInfo(postId) || {}),
     sourceType,
     slug,
     maxEp: maxEp || null,

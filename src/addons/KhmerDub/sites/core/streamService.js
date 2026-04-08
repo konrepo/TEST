@@ -39,10 +39,13 @@ async function getStream(prefix, seriesUrl, episode) {
     const groupName = prefix || "khmerdub";
 
     /* ==================================================
-       EXTERNAL EPISODE PAGE (e.g. nizu.top)
-       The seriesUrl is the episode page itself
+       ✅ EXTERNAL EPISODE PAGE (VIP ONLY, e.g. nizu.top)
+       Triggered ONLY when the ID encodes an episode URL
     =================================================== */
-    if (/^https?:\/\/[^/]+\/.*-\d+\/?$/.test(seriesUrl)) {
+    if (
+      prefix === "vip" &&
+      /^https?:\/\/[^/]+\/.*-\d+\/?$/.test(seriesUrl)
+    ) {
       const detail = await getStreamDetail(null, "wordpress", seriesUrl);
       if (!detail?.urls?.length) {
         return { streams: [] };
@@ -63,7 +66,7 @@ async function getStream(prefix, seriesUrl, episode) {
     }
 
     /* =========================
-       RESOLVE POST (TTL-AWARE)
+       RESOLVE POST (TTL‑AWARE)
     ========================= */
     const { postId, info } = await resolvePost(seriesUrl);
 
@@ -131,7 +134,9 @@ async function getStream(prefix, seriesUrl, episode) {
       seriesUrl
     );
 
-    return { streams: sortStreams([stream]) };
+    return {
+      streams: sortStreams([stream])
+    };
 
   } catch (err) {
     console.error("[streamService]", err);
