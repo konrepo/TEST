@@ -24,102 +24,119 @@ const PROVIDERS = {
   phumi2: "PhumiClub"
 };
 
-// External episode page (e.g. nizu.top)
-if (/^https?:\/\/[^/]+\/.*-\d+\/?$/.test(seriesUrl)) {
-  // Treat as direct episode page
-  const detail = await getStreamDetail(null, "wordpress", seriesUrl);
-  if (!detail?.urls?.length) return { streams: [] };
-
-  return {
-    streams: detail.urls.map(url =>
-      buildStream(url, episode, null, "PhumiVIP", "vip", seriesUrl)
-    )
-  };
-}
-
+/* =========================
+   STREAM
+========================= */
 async function getStream(prefix, seriesUrl, episode) {
+  try {
+    console.log("[streamService]", {
+      prefix,
+      seriesUrl,
+      episode
+    });
 
-  console.log("[streamService]", {
-    prefix,
-    seriesUrl,
-    episode
-  });
+    const providerName = PROVIDERS[prefix] || "KhmerDub";
+    const groupName = prefix || "khmerdub";
 
-  const providerName = PROVIDERS[prefix] || "KhmerDub";
-  const groupName = prefix || "khmerdub";
+    /* ==================================================
+       EXTERNAL EPISODE PAGE (e.g. nizu.top)
+       The seriesUrl is the episode page itself
+    =================================================== */
+    if (/^https?:\/\/[^/]+\/.*-\d+\/?$/.test(seriesUrl)) {
+      const detail = await getStreamDetail(null, "wordpress", seriesUrl);
+      if (!detail?.urls?.length) {
+        return { streams: [] };
+      }
 
-  /* =========================
-     RESOLVE POST (TTL-AWARE)
-  ========================= */
-  const { postId, info } = await resolvePost(seriesUrl);
-
-  /* =========================
-     SUNDAY DIRECT FALLBACK
-  ========================= */
-  if (!postId && prefix === "sunday") {
-    try {
-      const { data } = await axiosClient.get(seriesUrl, {
-        headers: { Referer: seriesUrl }
-      });
-
-      const links = extractVideoLinks(data);
-      const url = links[episode - 1];
-      if (!url) return { streams: [] };
-
-      const stream = buildStream(
-        url,
-        episode,
-        null,
-        providerName,
-        groupName,
-        seriesUrl
+      const streams = detail.urls.map(url =>
+        buildStream(
+          url,
+          episode,
+          null,
+          providerName,
+          groupName,
+          seriesUrl
+        )
       );
 
-      return { streams: sortStreams([stream]) };
-    } catch {
-      return { streams: [] };
+      return { streams: sortStreams(streams) };
     }
-  }
 
-  if (!postId || !info) return { streams: [] };
+    /* =========================
+       RESOLVE POST (TTL-AWARE)
+    ========================= */
+    const { postId, info } = await resolvePost(seriesUrl);
 
-  /* =========================
-     FETCH STREAM DETAIL
-  ========================= */
-  const detail = await getStreamDetail(postId, info.sourceType, seriesUrl);
-  if (!detail?.urls?.length) return { streams: [] };
+    /* =========================
+       SUNDAY DIRECT FALLBACK
+    ========================= */
+    if (!postId && prefix === "sunday") {
+      try {
+        const { data } = await axiosClient.get(seriesUrl, {
+          headers: { Referer: seriesUrl }
+        });
 
-  let url = detail.urls[episode - 1];
-  if (!url) return { streams: [] };
+        const links = extractVideoLinks(data);
+        const url = links[episode - 1];
+        if (!url) return { streams: [] };
 
-  /* =========================
-     RESOLVE INDIRECT STREAMS
-  ========================= */
-  if (url.includes("player.php")) {
-    url = await resolvePlayerUrl(url);
+        const stream = buildStream(
+          url,
+          episode,
+          null,
+          providerName,
+          groupName,
+          seriesUrl
+        );
+
+        return { streams: sortStreams([stream]) };
+      } catch {
+        return { streams: [] };
+      }
+    }
+
+    if (!postId || !info) return { streams: [] };
+
+    /* =========================
+       FETCH STREAM DETAIL
+    ========================= */
+    const detail = await getStreamDetail(postId, info.sourceType, seriesUrl);
+    if (!detail?.urls?.length) return { streams: [] };
+
+    let url = detail.urls[episode - 1];
     if (!url) return { streams: [] };
+
+    /* =========================
+       RESOLVE INDIRECT STREAMS
+    ========================= */
+    if (url.includes("player.php")) {
+      url = await resolvePlayerUrl(url);
+      if (!url) return { streams: [] };
+    }
+
+    if (url.includes("ok.ru/videoembed")) {
+      url = await resolveOkEmbed(url);
+      if (!url) return { streams: [] };
+    }
+
+    /* =========================
+       BUILD & SORT STREAMS
+    ========================= */
+    const stream = buildStream(
+      url,
+      episode,
+      null,
+      providerName,
+      groupName,
+      seriesUrl
+    );
+
+    return { streams: sortStreams([stream]) };
+
+  } catch (err) {
+    console.error("[streamService]", err);
+    return { streams: [] };
   }
-
-  if (url.includes("ok.ru/videoembed")) {
-    url = await resolveOkEmbed(url);
-    if (!url) return { streams: [] };
-  }
-
-  /* =========================
-     BUILD & SORT STREAMS
-  ========================= */
-  const stream = buildStream(
-    url,
-    episode,
-    null,
-    providerName,
-    groupName,
-    seriesUrl
-  );
-
-  return {
-    streams: sortStreams([stream])
-  };
 }
 
 module.exports = {
