@@ -51,22 +51,17 @@ function normalizeEpisodeTitle(title, index) {
 
   let t = title.trim();
 
-  // 01.Title OR 01 Title
-  let match = t.match(/^(\d+)\s*[\.\-]?\s*/);
-  if (match) {
-    const ep = parseInt(match[1], 10);
-    return t.toUpperCase().includes("E")
-      ? `Episode ${ep} End`
-      : `Episode ${ep}`;
+  // Match patterns like:
+  // "01.Title", "1.Title", "01 - Title", "EP01", "Episode 01", etc.
+  const match = t.match(/(?:EP|Episode)?\s*(\d+)/i);
+
+  if (match && match[1]) {
+    const num = parseInt(match[1], 10);
+    return `Episode ${num}`;
   }
 
-  // EP 1 → Episode 1
-  t = t.replace(/^EP\s*/i, "Episode ");
-
-  // Episode 30E → Episode 30 End
-  t = t.replace(/^Episode\s*(\d+)\s*E$/i, "Episode $1 End");
-
-  return t;
+  // fallback
+  return `Episode ${index + 1}`;
 }
 
 function normalizeVideoUrl(url, baseUrl = "") {
@@ -249,7 +244,7 @@ async function getEpisodes(prefix, seriesUrl) {
 
     return detail.videos.map((v, index) => ({
       id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
-      title: detail.title || v.title || `Episode ${index + 1}`,
+      title: normalizeEpisodeTitle(v.title, index),
       season: 1,
       episode: index + 1,
       thumbnail: detail.thumbnail || "",
