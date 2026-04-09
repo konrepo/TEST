@@ -244,7 +244,7 @@ async function getEpisodes(prefix, seriesUrl) {
 
     return detail.videos.map((v, index) => ({
       id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
-      title: `${detail.title} - Episode ${index + 1}`,
+      title: `Episode ${index + 1}`,
       season: 1,
       episode: index + 1,
       thumbnail: detail.thumbnail || "",
@@ -280,7 +280,7 @@ async function getStream(prefix, seriesUrl, episode) {
       url = resolved || cleaned;
     }
 
-    return buildStream(url, episode, v.title, "PhumiClub", "phumi2");
+    return buildStream(url, episode, detail.title, "PhumiClub", "phumi2");
   } catch (err) {
     console.log("[phumi2] getStream failed:", err.message);
     return null;
