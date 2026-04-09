@@ -51,17 +51,16 @@ function normalizeEpisodeTitle(title, index) {
 
   let t = title.trim();
 
-  // Match patterns like:
-  // "01.Title", "1.Title", "01 - Title", "EP01", "Episode 01", etc.
-  const match = t.match(/(?:EP|Episode)?\s*(\d+)/i);
+  // EP 1 → Episode 1
+  t = t.replace(/^EP\s*/i, "Episode ");
 
-  if (match && match[1]) {
-    const num = parseInt(match[1], 10);
-    return `Episode ${num}`;
-  }
+  // EP30 → Episode 30
+  t = t.replace(/^Episode\s*(\d+)E$/i, "Episode $1 End");
 
-  // fallback
-  return `Episode ${index + 1}`;
+  // EP 30E → Episode 30 End
+  t = t.replace(/^Episode\s*(\d+)\s*E$/i, "Episode $1 End");
+
+  return t;
 }
 
 function normalizeVideoUrl(url, baseUrl = "") {
@@ -244,7 +243,7 @@ async function getEpisodes(prefix, seriesUrl) {
 
     return detail.videos.map((v, index) => ({
       id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
-      title: `${detail.title} - Episode ${index + 1}`,
+      title: detail.title || v.title || `Episode ${index + 1}`,
       season: 1,
       episode: index + 1,
       thumbnail: detail.thumbnail || "",
@@ -280,7 +279,7 @@ async function getStream(prefix, seriesUrl, episode) {
       url = resolved || cleaned;
     }
 
-    return buildStream(url, episode, detail.title, "PhumiClub", "phumi2");
+    return buildStream(url, episode, v.title, "PhumiClub", "phumi2");
   } catch (err) {
     console.log("[phumi2] getStream failed:", err.message);
     return null;
