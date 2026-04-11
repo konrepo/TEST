@@ -280,7 +280,7 @@ async function getStream(prefix, seriesUrl, episode) {
       return {
         ytId,
         name: "PhumiClub",
-        title: v.title || `Episode ${episode}`,
+        title: `Episode ${episode} (YouTube)`,
         behaviorHints: { group: "phumi2" }
       };
     }
