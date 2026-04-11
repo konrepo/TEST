@@ -1,5 +1,6 @@
 const TYPES = ["series", "movie", "channel"];
 const EXTRA = ["search", "skip"];
+const config = require("./sites/config");
 
 const sites = [
   { id: "khmertv", name: "KhmerTV", type: "channel", enabled: true }, 
@@ -9,8 +10,8 @@ const sites = [
   { id: "khmerave", name: "KhmerAve", type: "series", enabled: true },
   { id: "merlkon", name: "Merlkon", type: "series", enabled: true },
   { id: "idrama", name: "iDramaHD", type: "series", enabled: true }, 
-  { id: "cat3movie", name: "Cat3Movie", type: "movie", enabled: false },
-  { id: "xvideos", name: "xvideos", type: "movie", enabled: false }  
+  { id: "cat3movie", name: "Cat3Movie", type: "movie", enabled: true },
+  { id: "xvideos", name: "xvideos", type: "movie", enabled: true }  
 ];
 
 module.exports = {

@@ -10,7 +10,7 @@ const sites = [
   { id: "khmerave", name: "KhmerAve", type: "series", enabled: true },
   { id: "merlkon", name: "Merlkon", type: "series", enabled: true },
   { id: "idrama", name: "iDramaHD", type: "series", enabled: true }, 
-  { id: "cat3movie", name: "Cat3Movie", type: "movie", enabled: false },
+  { id: "cat3movie", name: "Cat3Movie", type: "movie", enabled: true },
   { id: "xvideos", name: "xvideos", type: "movie", enabled: true }  
 ];
 
@@ -78,7 +78,7 @@ module.exports = {
           ]
         };
       }
-	  
+
       if (site.id === "xvideos") {
         return {
           type: site.type,
@@ -90,7 +90,7 @@ module.exports = {
             { name: "genre", isRequired: false, options: Object.keys(config.xvideos.categoryMap || {}) }
           ]
         };
-      }	  
+      }
 
       return {
         type: site.type,
@@ -106,4 +106,5 @@ module.exports = {
   behaviorHints: {
     configurable: false
   }
+
 }; 
